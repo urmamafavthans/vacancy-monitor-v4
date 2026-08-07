@@ -8,6 +8,14 @@ function cleanText(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
 
+function pageUsesClientFramework(html) {
+  if (!html) return false;
+  const $ = cheerio.load(html);
+  const appRoot = $('[id="__next"], [id="app"], [id="root"], [data-reactroot]').length > 0;
+  const frameworkScripts = $('script#__NEXT_DATA__, script[src*="/_next/"], script[src*="webpack"], script[src*="react"]').length > 0;
+  return appRoot && (frameworkScripts || $('script').length >= 6);
+}
+
 function pageLooksClientRendered(html) {
   if (!html) return true;
   const $ = cheerio.load(html);
@@ -55,11 +63,13 @@ async function loadWithBrowser(urls) {
   const crawler = new PlaywrightCrawler({
     maxConcurrency: 1,
     maxRequestRetries: 1,
-    requestHandlerTimeoutSecs: 35,
+    requestHandlerTimeoutSecs: 40,
     navigationTimeoutSecs: 30,
     launchContext: { launchOptions: { headless: true } },
     async requestHandler({ request, page, response }) {
       await page.waitForLoadState('domcontentloaded').catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(500);
       const html = await page.content();
       const text = cleanText(await page.locator('body').innerText().catch(() => ''));
       let headers = {};
@@ -90,7 +100,7 @@ export async function loadPages(urls, { browserFallback = true } = {}) {
   if (!browserFallback) return primary;
   const fallbackUrls = unique.filter((url) => {
     const page = primary.get(url);
-    return !page || page.error || page.statusCode >= 400 || pageLooksClientRendered(page.html);
+    return !page || page.error || page.statusCode >= 400 || pageLooksClientRendered(page.html) || pageUsesClientFramework(page.html);
   });
   if (!fallbackUrls.length) return primary;
   const browser = await loadWithBrowser(fallbackUrls);
