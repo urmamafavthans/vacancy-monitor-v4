@@ -1,4 +1,4 @@
-import { POC_INSTITUTIONS, SHEETS } from './config.js';
+import { POC_INSTITUTIONS, SHEETS, scanRunContext, selectRunSources } from './config.js';
 import { createSheetsClient, readUrlMaster, setConfigValue, spreadsheetId } from './sheets.js';
 
 function clean(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
@@ -39,14 +39,13 @@ async function main() {
   const config = await readConfig(client);
   const diagnostics = await readRange(client, `${SHEETS.DIAGNOSTICS}!A1:L10000`);
   const current = diagnostics.slice(1).filter((row) => clean(row[1]) === runId);
-  const sources = (await readUrlMaster(client)).filter((source) => source.enabled);
+  const sources = selectRunSources(await readUrlMaster(client), { ...scanRunContext(), pocOnly: true });
   const logRows = (await readRange(client, `${SHEETS.VACANCY_LOG}!A1:Q5000`)).slice(1).filter((row) => row.some((cell) => clean(cell)));
   const failures = [];
 
   if (!current.length) failures.push(`No SCAN_DIAGNOSTICS rows found for run ${runId}.`);
-  const unexpected = sources.filter((source) => !POC_INSTITUTIONS.has(source.institution));
   const missing = [...POC_INSTITUTIONS].filter((name) => !sources.some((source) => source.institution === name));
-  if (sources.length !== POC_INSTITUTIONS.size || unexpected.length || missing.length) failures.push(`POC source gate changed: enabled=${sources.map((s) => s.institution).join(' | ')}; missing=${missing.join(' | ') || 'none'}; unexpected=${unexpected.map((s) => s.institution).join(' | ') || 'none'}.`);
+  if (sources.length !== POC_INSTITUTIONS.size || missing.length) failures.push(`POC source gate changed: selected=${sources.map((s) => s.institution).join(' | ')}; missing=${missing.join(' | ') || 'none'}.`);
 
   const currentVerifiedUrls = new Map();
   for (const source of sources) {

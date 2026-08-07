@@ -1,4 +1,4 @@
-name: Vacancy Monitor v4 — POC Scan
+name: Vacancy Monitor v4 — Controlled Expansion Scan
 
 on:
   workflow_dispatch:
@@ -9,20 +9,20 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'package.json'
-      - '.github/workflows/poc-scan.yml'
+      - '.github/workflows/expansion-scan.yml'
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: vacancy-monitor-v4-poc
+  group: vacancy-monitor-v4-expansion
   cancel-in-progress: false
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -30,7 +30,6 @@ jobs:
 
       - id: auth
         name: Authenticate to Google Cloud with OIDC
-        if: github.event_name == 'workflow_dispatch'
         uses: google-github-actions/auth@v3
         with:
           create_credentials_file: true
@@ -46,24 +45,14 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Install Chromium for browser fallback
-        if: github.event_name == 'workflow_dispatch'
         run: npx playwright install --with-deps chromium
 
       - name: Run regression tests
         run: npm test
 
-      - name: Run three-source POC scan
-        if: github.event_name == 'workflow_dispatch'
-        run: npm run scan:poc
+      - name: Run enabled-source expansion scan
+        run: npm run scan
         env:
           SPREADSHEET_ID: 1g_2mRUa8M7DouWljcZyDuj_oLKdZiyLHS5SeBOTbVOE
           CRAWLEE_STORAGE_DIR: ${{ runner.temp }}/vacancy-monitor-crawlee
-          ALLOW_ADDITIONAL_ENABLED: 'true'
           CI: 'true'
-
-      - name: Review POC acceptance gates
-        if: github.event_name == 'workflow_dispatch'
-        run: npm run review:poc
-        env:
-          SPREADSHEET_ID: 1g_2mRUa8M7DouWljcZyDuj_oLKdZiyLHS5SeBOTbVOE
-          ALLOW_ADDITIONAL_ENABLED: 'true'

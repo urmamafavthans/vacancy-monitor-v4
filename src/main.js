@@ -1,4 +1,4 @@
-import { POC_INSTITUTIONS } from './config.js';
+import { scanRunContext, selectRunSources } from './config.js';
 import { diagnosticRow } from './diagnostics.js';
 import { resolveVacancySource } from './discovery.js';
 import { extractCandidates } from './extract.js';
@@ -14,23 +14,18 @@ function explicitlyZeroVacancies(page) {
 }
 
 async function main() {
-  const client = await createSheetsClient(); const sources = await readUrlMaster(client); const enabled = sources.filter((source) => source.enabled); const pocOnly = String(process.env.POC_ONLY || '').toLowerCase() === 'true';
-  if (!enabled.length) throw new Error('No URL_MASTER sources are enabled.');
-  if (pocOnly) {
-    const unexpected = enabled.filter((source) => !POC_INSTITUTIONS.has(source.institution)); const missing = [...POC_INSTITUTIONS].filter((name) => !enabled.some((source) => source.institution === name));
-    if (unexpected.length || missing.length || enabled.length !== POC_INSTITUTIONS.size) throw new Error(`POC safety gate failed. Enabled=${enabled.map((s) => s.institution).join(' | ')}; missing=${missing.join(' | ') || 'none'}; unexpected=${unexpected.map((s) => s.institution).join(' | ') || 'none'}`);
-  }
+  const client = await createSheetsClient(); const sources = await readUrlMaster(client); const context = scanRunContext(); const enabled = selectRunSources(sources, context);
   const runTime = new Date().toISOString(); const runId = process.env.GITHUB_RUN_ID || `local-${Date.now()}`; const diagnostics = []; const verifiedRows = []; let technicalErrors = 0;
-  console.log(`Vacancy Monitor v4 POC: ${enabled.length} enabled source(s).`);
+  console.log(`Vacancy Monitor v4 ${context.label}: ${enabled.length} enabled source(s).`);
   for (const source of enabled) {
     console.log(`\n[${source.institution}] ENTRY ${source.entryUrl}`);
-    await updateSourceStatus(client, source, { lastChecked: runTime, status: 'POC scanning', activeVacancies: 0, notes: 'ENTRY discovery started' });
+    await updateSourceStatus(client, source, { lastChecked: runTime, status: `${context.label} scanning`, activeVacancies: 0, notes: 'ENTRY discovery started' });
     try {
       const resolution = await resolveVacancySource(source, loadPages);
       if (!resolution.resolvedUrl) {
         if (resolution.method === 'ENTRY_ERROR') technicalErrors += 1;
         diagnostics.push(diagnosticRow({ runTime, runId, institution: source.institution, entryUrl: source.entryUrl, route: 'ENTRY', extractionMethod: resolution.method, decision: resolution.method === 'ENTRY_ERROR' ? 'ERROR' : 'AMBIGUOUS', reason: 'No confirmed vacancy source resolved', evidence: resolution.trace.join(' | ') }));
-        await updateSourceStatus(client, source, { lastChecked: runTime, status: 'POC unresolved', activeVacancies: 0, notes: `${resolution.method}: ${resolution.trace.join(' | ')}`.slice(0, 1000) }); continue;
+        await updateSourceStatus(client, source, { lastChecked: runTime, status: `${context.label} unresolved`, activeVacancies: 0, notes: `${resolution.method}: ${resolution.trace.join(' | ')}`.slice(0, 1000) }); continue;
       }
       const resolvedUrl = resolution.resolvedUrl; const sourcePage = resolution.page; await updateResolvedSource(client, source, resolvedUrl);
       diagnostics.push(diagnosticRow({ runTime, runId, institution: source.institution, entryUrl: source.entryUrl, resolvedSourceUrl: resolvedUrl, route: 'ENTRY', extractionMethod: resolution.method, decision: 'VERIFIED', reason: 'Vacancy source resolved', evidence: resolution.trace.join(' | ') }));
@@ -45,7 +40,7 @@ async function main() {
           reason: zeroState ? 'Confirmed vacancy source explicitly reports zero vacancies' : 'Confirmed vacancy source contained no extractable job candidates',
           evidence: zeroState ? 'explicit zero-vacancy statement' : `source loader=${sourcePage.method}`,
         }));
-        await updateSourceStatus(client, source, { lastChecked: runTime, status: zeroState ? 'POC checked — zero vacancies' : 'POC checked — no candidates', activeVacancies: 0, notes: `${resolution.method}; source=${resolvedUrl}` }); continue;
+        await updateSourceStatus(client, source, { lastChecked: runTime, status: zeroState ? `${context.label} checked — zero vacancies` : `${context.label} checked — no candidates`, activeVacancies: 0, notes: `${resolution.method}; source=${resolvedUrl}` }); continue;
       }
       const detailUrls = [...new Set(candidates.filter((candidate) => !sameUrl(candidate.url, resolvedUrl)).map((candidate) => candidate.url))].slice(0, 25); const detailPages = await loadPages(detailUrls); let sourceVerified = 0;
       for (const candidate of candidates) {
@@ -55,14 +50,14 @@ async function main() {
         if (verification.decision === 'ERROR') technicalErrors += 1;
         if (verification.decision === 'VERIFIED') { sourceVerified += 1; verifiedRows.push(normalizeVerifiedVacancy(candidate, source, verification, runTime)); }
       }
-      await updateSourceStatus(client, source, { lastChecked: runTime, status: 'POC complete — review required', activeVacancies: sourceVerified, notes: `${resolution.method}; candidates=${candidates.length}; verified=${sourceVerified}; source=${resolvedUrl}`.slice(0, 1000) });
+      await updateSourceStatus(client, source, { lastChecked: runTime, status: `${context.label} complete — review required`, activeVacancies: sourceVerified, notes: `${resolution.method}; candidates=${candidates.length}; verified=${sourceVerified}; source=${resolvedUrl}`.slice(0, 1000) });
     } catch (error) {
       technicalErrors += 1; diagnostics.push(diagnosticRow({ runTime, runId, institution: source.institution, entryUrl: source.entryUrl, route: 'SYSTEM', extractionMethod: 'EXCEPTION', decision: 'ERROR', reason: 'Unhandled source error', evidence: errorText(error) }));
-      await updateSourceStatus(client, source, { lastChecked: runTime, status: 'POC error', activeVacancies: 0, notes: errorText(error).slice(0, 1000) });
+      await updateSourceStatus(client, source, { lastChecked: runTime, status: `${context.label} error`, activeVacancies: 0, notes: errorText(error).slice(0, 1000) });
     }
   }
-  const upsert = await upsertVerifiedVacancies(client, verifiedRows); await appendDiagnostics(client, diagnostics); await setConfigValue(client, 'MIGRATION_STATE', technicalErrors ? 'POC_SCAN_COMPLETE_WITH_ERRORS' : 'POC_SCAN_COMPLETE_REVIEW_REQUIRED');
+  const upsert = await upsertVerifiedVacancies(client, verifiedRows); await appendDiagnostics(client, diagnostics); await setConfigValue(client, 'MIGRATION_STATE', technicalErrors ? `${context.statePrefix}_SCAN_COMPLETE_WITH_ERRORS` : `${context.statePrefix}_SCAN_COMPLETE_REVIEW_REQUIRED`);
   console.log(`\nVerified vacancies: ${verifiedRows.length}`); console.log(`VACANCY_LOG inserted=${upsert.inserted}, updated=${upsert.updated}`); console.log(`Diagnostics rows: ${diagnostics.length}`); console.log(`Technical errors: ${technicalErrors}`);
-  if (technicalErrors) throw new Error(`POC completed with ${technicalErrors} technical error(s). Review SCAN_DIAGNOSTICS.`);
+  if (technicalErrors) throw new Error(`${context.label} completed with ${technicalErrors} technical error(s). Review SCAN_DIAGNOSTICS.`);
 }
 main().catch((error) => { console.error(errorText(error)); process.exitCode = 1; });

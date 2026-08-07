@@ -8,17 +8,17 @@ Verified vacancy-monitor pipeline using Google Sheets as the control panel and G
 
 Every extracted candidate is accounted for in `SCAN_DIAGNOSTICS` as `VERIFIED`, `REJECTED`, `AMBIGUOUS`, or `ERROR`. Only `VERIFIED` jobs enter `VACANCY_LOG`.
 
-## Current stage: three-source POC
+## Current stage: controlled expansion
 
 Authentication preflight is complete using GitHub OIDC + Google Workload Identity Federation. No long-lived Google service-account key is stored.
 
-The first crawler acceptance set contains only:
+The three-source proof of concept is accepted after consecutive clean live runs:
 
 - Kunstinstituut Melly
 - Kunsthal Rotterdam
 - Nieuwe Instituut | Huis Sonneveld
 
-All other sources remain disabled until the POC is reviewed.
+Expansion Batch 1 adds Roodkapje, LUX Nijmegen, and HKU. Only these six sources are enabled while the new batch is reviewed against its official vacancy pages.
 
 ### Routing rules
 
@@ -31,17 +31,15 @@ All other sources remain disabled until the POC is reviewed.
 
 Crawlee uses `CheerioCrawler` first. `PlaywrightCrawler` is used only when the HTML request fails or the page appears to be a client-rendered app shell.
 
-## Manual POC run
+## Workflows
 
-Open **Actions → Vacancy Monitor v4 — POC Scan → Run workflow**.
+**Vacancy Monitor v4 — Controlled Expansion Scan** runs the full enabled source set. It starts on relevant pushes and can also be started manually.
 
-The workflow installs dependencies and Chromium, runs regression tests first, then scans only the three enabled POC rows. If tests fail, no scan is executed.
+**Vacancy Monitor v4 — POC Scan** keeps the accepted three-source set available as a regression check. Pushes run its regression tests only; manual dispatch runs and reviews the three POC sources even while approved expansion rows are enabled.
 
-A technically green run is not final acceptance. Review `VACANCY_LOG`, `SCAN_DIAGNOSTICS`, and the resolved source/status fields in `URL_MASTER` before expanding the source set.
+Both scan paths run regression tests before crawling. If tests fail, no scan is executed.
 
-## POC correction cycle
-
-POC run #1 validated the infrastructure but exposed source-recognition, page-scope, and Sheet-row-placement issues. The current v4.1.1 POC correction set addresses those issues. A second manual POC run is required before acceptance.
+A technically green expansion run is not batch acceptance. Review `VACANCY_LOG`, `SCAN_DIAGNOSTICS`, and the resolved source/status fields in `URL_MASTER` against the enabled institutions' official vacancy pages before enabling another batch.
 
 ## Legacy Apps Script
 
