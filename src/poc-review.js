@@ -12,17 +12,11 @@ function canonicalUrl(value) {
   } catch { return clean(value); }
 }
 function comparable(value) { return clean(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' '); }
-function repeatedVacatureTitle(title) {
-  const parts = clean(title).split(/\s*vacature\s*/i);
-  if (parts.length !== 2) return false;
-  const left = comparable(parts[0]); const right = comparable(parts[1]);
-  return Boolean(left && right && left === right);
-}
 function corruptTitle(title, institution) {
   const value = clean(title);
   if (!value || value.length > 160) return true;
   if (/\.css-|@media|font-size\s*:|line-height\s*:|font-family\s*:|\{[^}]*\}/i.test(value)) return true;
-  if (/\bvacature\b/i.test(value) || repeatedVacatureTitle(value)) return true;
+  if (/\bvacature\b/i.test(value)) return true;
   if (comparable(value) === comparable(institution)) return true;
   return false;
 }
@@ -33,11 +27,16 @@ async function readRange(client, range) {
   const { data } = await client.spreadsheets.values.get({ spreadsheetId: spreadsheetId(), range, valueRenderOption: 'FORMATTED_VALUE' });
   return data.values ?? [];
 }
+async function readConfig(client) {
+  const rows = await readRange(client, `${SHEETS.CONFIG}!A1:B100`);
+  return new Map(rows.map((row) => [clean(row[0]), clean(row[1])]).filter(([key]) => key));
+}
 
 async function main() {
   const runId = clean(process.env.GITHUB_RUN_ID);
   if (!runId) throw new Error('POC review requires GITHUB_RUN_ID.');
   const client = await createSheetsClient();
+  const config = await readConfig(client);
   const diagnostics = await readRange(client, `${SHEETS.DIAGNOSTICS}!A1:L10000`);
   const current = diagnostics.slice(1).filter((row) => clean(row[1]) === runId);
   const sources = (await readUrlMaster(client)).filter((source) => source.enabled);
@@ -97,18 +96,32 @@ async function main() {
   }
 
   if (failures.length) {
+    await setConfigValue(client, 'POC_CLEAN_STREAK', '0');
     await setConfigValue(client, 'MIGRATION_STATE', 'POC_FIX_REQUIRED');
-    console.error(`POC acceptance: FAIL (${failures.length} issue(s))`);
+    console.error(`POC acceptance: FAIL (${failures.length} issue(s)); clean streak reset to 0.`);
     for (const failure of failures) console.error(`- ${failure}`);
     process.exitCode = 1;
     return;
   }
+
+  const previousStreak = Math.max(0, Number(config.get('POC_CLEAN_STREAK') || 0) || 0);
+  const cleanStreak = previousStreak + 1;
+  await setConfigValue(client, 'POC_CLEAN_STREAK', String(cleanStreak));
+  if (cleanStreak < 2) {
+    await setConfigValue(client, 'MIGRATION_STATE', 'POC_CLEAN_PASS_1');
+    console.log(`POC acceptance: CLEAN PASS 1/2. ${currentVerifiedUrls.size} current paid vacancy record(s) verified. One more consecutive clean live run is required.`);
+    return;
+  }
   await setConfigValue(client, 'MIGRATION_STATE', 'POC_ACCEPTED');
-  console.log(`POC acceptance: PASS. ${currentVerifiedUrls.size} current paid vacancy record(s) verified across ${sources.length} POC sources.`);
+  console.log(`POC acceptance: PASS ${cleanStreak}/2. ${currentVerifiedUrls.size} current paid vacancy record(s) verified across ${sources.length} POC sources with consecutive-run stability.`);
 }
 
 main().catch(async (error) => {
   console.error(error?.stack || error?.message || String(error));
-  try { const client = await createSheetsClient(); await setConfigValue(client, 'MIGRATION_STATE', 'POC_REVIEW_ERROR'); } catch {}
+  try {
+    const client = await createSheetsClient();
+    await setConfigValue(client, 'POC_CLEAN_STREAK', '0');
+    await setConfigValue(client, 'MIGRATION_STATE', 'POC_REVIEW_ERROR');
+  } catch {}
   process.exitCode = 1;
 });
