@@ -41,7 +41,7 @@ A technically green run is not final acceptance. Review `VACANCY_LOG`, `SCAN_DIA
 
 ## POC correction cycle
 
-POC run #1 validated the infrastructure but exposed source-recognition, page-scope, and Sheet-row-placement issues. Commit `96d3e53c8b7352c29749f66c47f63abf2f4a8841` contains the first correction set. A second manual POC run is required before acceptance.
+POC run #1 validated the infrastructure but exposed source-recognition, page-scope, and Sheet-row-placement issues. The current v4.1.1 POC correction set addresses those issues. A second manual POC run is required before acceptance.
 
 ## Legacy Apps Script
 
