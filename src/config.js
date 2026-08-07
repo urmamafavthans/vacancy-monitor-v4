@@ -11,6 +11,10 @@ export const URL_MASTER_HEADERS = Object.freeze([
   'Notes','City','Travel Time (min)',
 ]);
 
+export const EXPANSION_HEADERS = Object.freeze([
+  'Expansion State','Clean Streak','Attempts','Result Signature','Last Validation Run','Blocker Reason',
+]);
+
 export const VACANCY_LOG_HEADERS = Object.freeze([
   'First Seen','Last Seen','Institution','Original Job Title','English Job Title','Vacancy URL',
   'Source URL','City','Date Posted','Closing Date','Weekly Hours','Contract Mode',
@@ -29,15 +33,27 @@ function enabledFlag(value) {
 
 export function scanRunContext(env = process.env) {
   const pocOnly = enabledFlag(env.POC_ONLY);
+  const autoExpansion = enabledFlag(env.AUTO_EXPANSION);
+  const batchSize = Math.max(1, Number(env.EXPANSION_BATCH_SIZE || 6));
+  const maxAttempts = Math.max(2, Number(env.EXPANSION_MAX_ATTEMPTS || 4));
   return Object.freeze({
     pocOnly,
+    autoExpansion,
+    batchSize,
+    maxAttempts,
     allowAdditionalEnabled: enabledFlag(env.ALLOW_ADDITIONAL_ENABLED),
-    label: pocOnly ? 'POC' : 'Expansion',
+    label: pocOnly ? 'POC' : autoExpansion ? 'Automated expansion' : 'Expansion',
     statePrefix: pocOnly ? 'POC' : 'EXPANSION',
   });
 }
 
 export function selectRunSources(sources, context) {
+  if (context.autoExpansion) {
+    const active = sources.filter((source) => source.expansionState === 'TESTING');
+    if (!active.length) throw new Error('No automated expansion batch is active.');
+    if (active.length > context.batchSize) throw new Error(`Expansion safety gate failed: ${active.length} active sources exceed batch size ${context.batchSize}.`);
+    return active;
+  }
   const enabled = sources.filter((source) => source.enabled);
   if (!enabled.length) throw new Error('No URL_MASTER sources are enabled.');
   if (!context.pocOnly) return enabled;

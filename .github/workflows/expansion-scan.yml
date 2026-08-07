@@ -2,6 +2,8 @@ name: Vacancy Monitor v4 — Controlled Expansion Scan
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '7,37 * * * *'
   push:
     branches:
       - main
@@ -50,9 +52,12 @@ jobs:
       - name: Run regression tests
         run: npm test
 
-      - name: Run enabled-source expansion scan
+      - name: Run six-source automated expansion batch
         run: npm run scan
         env:
           SPREADSHEET_ID: 1g_2mRUa8M7DouWljcZyDuj_oLKdZiyLHS5SeBOTbVOE
           CRAWLEE_STORAGE_DIR: ${{ runner.temp }}/vacancy-monitor-crawlee
+          AUTO_EXPANSION: 'true'
+          EXPANSION_BATCH_SIZE: '6'
+          EXPANSION_MAX_ATTEMPTS: '4'
           CI: 'true'

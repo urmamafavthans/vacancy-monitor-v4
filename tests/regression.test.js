@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { scanRunContext, selectRunSources } from '../src/config.js';
+import { EXPANSION_STATES, expansionCounts, resultSignature, selectNextBatch, transitionExpansionSource } from '../src/expansion-state.js';
 import { hasEmploymentEvidence, isGenericNavigationTitle, verifyCandidate } from '../src/rules.js';
 
 const FALSE_POSITIVE_TITLES = ['Visit','Who we are','What we do','The building','Support us','Organization','Opening hours','Partners','Programme','Team','Shop','Newsletter','Zie ook','Bezoeken','Steun ons','Wie we zijn','Wat we doen','Het gebouw','The Family of Migrants','Now showing','HKU as a workplace','Applying step by step','Vacatures','Vacancies','Jobs','Careers'];
@@ -40,4 +41,42 @@ test('expansion mode scans every enabled source and writes expansion state label
   assert.equal(selectRunSources(EXPANSION_SOURCES, context).length, 6);
   assert.equal(context.label, 'Expansion');
   assert.equal(context.statePrefix, 'EXPANSION');
+});
+
+test('automated expansion selects only the six TESTING sources', () => {
+  const sources = Array.from({ length: 12 }, (_, index) => ({ institution: `Source ${index + 1}`, enabled: true, expansionState: index < 6 ? 'VALIDATED' : 'TESTING' }));
+  const context = scanRunContext({ AUTO_EXPANSION: 'true', EXPANSION_BATCH_SIZE: '6' });
+  assert.deepEqual(selectRunSources(sources, context).map((source) => source.institution), ['Source 7','Source 8','Source 9','Source 10','Source 11','Source 12']);
+  assert.equal(context.maxAttempts, 4);
+});
+
+test('automated expansion refuses more active sources than the batch limit', () => {
+  const sources = Array.from({ length: 7 }, (_, index) => ({ institution: `Source ${index + 1}`, expansionState: 'TESTING' }));
+  const context = scanRunContext({ AUTO_EXPANSION: 'true', EXPANSION_BATCH_SIZE: '6' });
+  assert.throws(() => selectRunSources(sources, context), /exceed batch size 6/);
+});
+
+test('a source validates only after two matching clean results', () => {
+  const signature = resultSignature(['source', 'VERIFIED|Role|https://example.org/job']);
+  const first = transitionExpansionSource({ attempts: 0, cleanStreak: 0, resultSignature: '' }, { clean: true, signature, reason: 'clean' });
+  assert.equal(first.expansionState, EXPANSION_STATES.TESTING);
+  assert.equal(first.cleanStreak, 1);
+  const second = transitionExpansionSource(first, { clean: true, signature, reason: 'clean' });
+  assert.equal(second.expansionState, EXPANSION_STATES.VALIDATED);
+  assert.equal(second.cleanStreak, 2);
+});
+
+test('a changed clean result resets the clean streak', () => {
+  const next = transitionExpansionSource({ attempts: 1, cleanStreak: 1, resultSignature: 'old' }, { clean: true, signature: 'new', reason: 'changed' });
+  assert.equal(next.expansionState, EXPANSION_STATES.TESTING);
+  assert.equal(next.cleanStreak, 1);
+});
+
+test('repeated unresolved results become a blocker without stopping later batches', () => {
+  const next = transitionExpansionSource({ attempts: 3, cleanStreak: 0, resultSignature: 'same' }, { clean: false, signature: 'same', reason: 'login wall' }, { maxAttempts: 4 });
+  assert.equal(next.expansionState, EXPANSION_STATES.BLOCKED);
+  assert.equal(next.enabled, false);
+  const sources = [{ expansionState: 'BLOCKED' }, ...Array.from({ length: 8 }, () => ({ expansionState: 'PENDING' }))];
+  assert.equal(selectNextBatch(sources, 6).length, 6);
+  assert.deepEqual(expansionCounts(sources), { pending: 8, testing: 0, validated: 0, blocked: 1 });
 });

@@ -18,7 +18,9 @@ The three-source proof of concept is accepted after consecutive clean live runs:
 - Kunsthal Rotterdam
 - Nieuwe Instituut | Huis Sonneveld
 
-Expansion Batch 1 adds Roodkapje, LUX Nijmegen, and HKU. Only these six sources are enabled while the new batch is reviewed against its official vacancy pages.
+Expansion Batch 1 added Roodkapje, LUX Nijmegen, and HKU and is accepted.
+
+The unattended expansion controller now advances six sources at a time. A source is validated after two consecutive clean runs with the same result signature. Ambiguous or failed sources retry up to four times, then move to `BLOCKED` while later sources continue. Controller state is stored in `URL_MASTER` columns P:U and summarized in `CONFIG`.
 
 ### Routing rules
 
@@ -33,13 +35,13 @@ Crawlee uses `CheerioCrawler` first. `PlaywrightCrawler` is used only when the H
 
 ## Workflows
 
-**Vacancy Monitor v4 — Controlled Expansion Scan** runs the full enabled source set. It starts on relevant pushes and can also be started manually.
+**Vacancy Monitor v4 — Controlled Expansion Scan** runs the active six-source validation batch at minutes 07 and 37 of every hour. Relevant pushes and manual dispatches use the same stateful controller. Workflow concurrency prevents overlapping scans.
 
 **Vacancy Monitor v4 — POC Scan** keeps the accepted three-source set available as a regression check. Pushes run its regression tests only; manual dispatch runs and reviews the three POC sources even while approved expansion rows are enabled.
 
 Both scan paths run regression tests before crawling. If tests fail, no scan is executed.
 
-A technically green expansion run is not batch acceptance. Review `VACANCY_LOG`, `SCAN_DIAGNOSTICS`, and the resolved source/status fields in `URL_MASTER` against the enabled institutions' official vacancy pages before enabling another batch.
+The controller requires two matching clean scans. Every candidate must be verified or deliberately rejected, and a zero-vacancy result requires an explicit statement on the official source. `AMBIGUOUS` and `ERROR` outcomes cannot increase the clean streak.
 
 ## Legacy Apps Script
 

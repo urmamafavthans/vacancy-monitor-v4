@@ -1,6 +1,6 @@
 {
   "name": "vacancy-monitor-v4",
-  "version": "4.1.3-poc",
+  "version": "4.2.0-expansion-controller",
   "private": true,
   "type": "module",
   "description": "Verified vacancy monitor: Google Sheets control panel + GitHub Actions + Crawlee.",
