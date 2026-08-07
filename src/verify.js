@@ -27,8 +27,22 @@ function visibleNodeText($, node) {
   const clone = node.clone(); clone.find('style,script,noscript,svg').remove();
   return cleanText(clone.text());
 }
+function comparableTitle(value) {
+  return cleanText(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ');
+}
+function collapseRepeatedVacancyTitle(value) {
+  const text = cleanText(value);
+  const parts = text.split(/\s*vacature\s*/i);
+  if (parts.length !== 2) return text;
+  const left = cleanText(parts[0]); const right = cleanText(parts[1]);
+  if (!left) return right;
+  if (!right) return left;
+  if (comparableTitle(left) === comparableTitle(right)) return left;
+  return text;
+}
 function cleanDetailTitle(value) {
-  return normalizeTitle(cleanText(value).replace(JOB_PREFIX, '').replace(/\s*\(\s*\d[^)]*(?:uur|hours?)[^)]*\)\s*$/i, ''));
+  const collapsed = collapseRepeatedVacancyTitle(value);
+  return normalizeTitle(cleanText(collapsed).replace(JOB_PREFIX, '').replace(/\s*\(\s*\d[^)]*(?:uur|hours?)[^)]*\)\s*$/i, ''));
 }
 function cleanHeadings($) {
   const values = [];
@@ -51,6 +65,11 @@ function resolvedTitle(candidate, headings, documentTitle, finalUrl) {
   if (prefixed) {
     const title = cleanDetailTitle(prefixed);
     if (title && !isGenericNavigationTitle(title)) return title;
+  }
+
+  for (const heading of headings) {
+    const title = cleanDetailTitle(heading);
+    if (title && original && comparableTitle(title) === comparableTitle(original)) return title;
   }
 
   if (original && !isGenericNavigationTitle(original)) {
