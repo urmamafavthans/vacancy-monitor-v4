@@ -21,8 +21,8 @@ jobs:
         uses: google-github-actions/auth@v3
         with:
           create_credentials_file: true
-          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
-          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+          workload_identity_provider: projects/201635773621/locations/global/workloadIdentityPools/github-actions/providers/github
+          service_account: vacancy-monitor@project-971fb5f9-f8e1-41d2-93e.iam.gserviceaccount.com
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -38,4 +38,4 @@ jobs:
       - name: Verify Google Sheets connection and v4 schema
         run: npm run preflight
         env:
-          SPREADSHEET_ID: ${{ vars.SPREADSHEET_ID }}
+          SPREADSHEET_ID: 1g_2mRUa8M7DouWljcZyDuj_oLKdZiyLHS5SeBOTbVOE
