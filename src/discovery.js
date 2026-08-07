@@ -28,6 +28,15 @@ export function isKnownAtsUrl(url) {
 function isSourceLikePath(url) { try { return SOURCE_PATH.test(new URL(url).pathname); } catch { return false; } }
 function isHtmlDiscoveryCandidate(url) { try { return !NON_HTML_ASSET.test(new URL(url).pathname); } catch { return false; } }
 function pageHasJobPosting(html) { return /["']@type["']\s*:\s*["']JobPosting["']/i.test(html || ''); }
+function jobPatternLinkCount(page, patternText) {
+  if (!patternText) return 0;
+  let pattern;
+  try { pattern = new RegExp(patternText, 'i'); } catch { return 0; }
+  const base = page.finalUrl || page.requestedUrl;
+  return extractAnchors(page.html, base).filter((link) => {
+    try { return pattern.test(new URL(link.url).pathname); } catch { return false; }
+  }).length;
+}
 
 export function extractAnchors(html, baseUrl) {
   const $ = cheerio.load(html || '');
@@ -137,6 +146,9 @@ export async function resolveVacancySource(source, loader) {
   const entryScore = scoreSourcePage(entry);
   trace.push(`entry score=${entryScore}`);
   if (entryScore >= 6) return { resolvedUrl: entry.finalUrl, method: 'ENTRY_IS_SOURCE', page: entry, trace };
+  const entryJobLinks = jobPatternLinkCount(entry, source.jobUrlPattern);
+  trace.push(`entry job-pattern links=${entryJobLinks}`);
+  if (entryJobLinks) return { resolvedUrl: entry.finalUrl, method: 'ENTRY_JOB_PATTERN', page: entry, trace };
   const direct = sourceCandidateLinks(entry);
   trace.push(`direct vacancy links=${direct.length}`);
   if (direct.length) {

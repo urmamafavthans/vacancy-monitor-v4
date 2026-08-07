@@ -9,7 +9,7 @@ const GENERIC_NAVIGATION_TITLES = new Set([
 const EXCLUDED_TITLE = /^(?:internship|intern|trainee|traineeship|stage|stagiair|stagiaire)\b/i;
 const EXCLUDED_EMPLOYMENT = /\b(?:internship|traineeship|stageplaats|meewerkstage|afstudeerstage|stagevergoeding|stagiair|stagiaire|volunteer position|volunteer role|vrijwilligersfunctie|vrijwilligerswerk|onbezoldigd|unpaid role|unpaid position|open application|open sollicitatie)\b/i;
 const VOLUNTEER_ONLY_TITLE = /^(?:volunteer|vrijwilliger|vrijwilligers?)$/i;
-const EMPLOYMENT_EVIDENCE = /\b(?:apply|solliciteer|solliciteren|reageer|deadline|closing date|sluitingsdatum|salary|salaris|cao|fte|\d+(?:[.,]\d+)?\s*(?:-|–|—|tot|to)?\s*\d*(?:[.,]\d+)?\s*(?:uur|hours?|u\.?)(?:\s*(?:per|p\/?w|week))?|full[- ]?time|part[- ]?time|deeltijd|voltijd|freelance|zzp|employment contract|arbeidsovereenkomst|contractduur|contract type|dienstverband|aanstelling|projectaanstelling)\b/i;
+const EMPLOYMENT_EVIDENCE = /\b(?:apply|solliciteer|solliciteren|reageer|reageren|deadline|closing date|sluitingsdatum|salary|salaris|bezoldiging|remuneration|honorarium|vergoeding|cao|fte|\d+(?:[.,]\d+)?\s*(?:-|–|—|tot|to)?\s*\d*(?:[.,]\d+)?\s*(?:uur|hours?|u\.?)(?:\s*(?:per|p\/?w|week))?|full[- ]?time|part[- ]?time|deeltijd|voltijd|freelance|zzp|employment contract|arbeidsovereenkomst|contractduur|contract type|dienstverband|aanstelling|projectaanstelling)\b/i;
 
 function cleanText(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
 export function normalizeTitle(title) { return cleanText(title); }

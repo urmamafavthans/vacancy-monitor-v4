@@ -155,3 +155,11 @@ test('a low-information server page is browser-validated before source resolutio
   const resolution = await resolveVacancySource({ entryUrl: url, resolvedVacancyUrl: '', crawlDepth: 2 }, loader);
   assert.equal(resolution.method, 'ENTRY_BROWSER_VALIDATED');
 });
+
+test('configured job-pattern links prove that a low-scoring entry is a vacancy source', async () => {
+  const url = 'https://example.org/info/join/';
+  const entry = page(url, '<html><body><main><h1>Join</h1><a href="/2026/08/07/vacature-programme-producer/">Vacature Programme Producer</a></main></body></html>');
+  const loader = async (urls) => new Map(urls.map((item) => [item, entry]));
+  const resolution = await resolveVacancySource({ entryUrl: url, resolvedVacancyUrl: '', crawlDepth: 2, jobUrlPattern: '\\/\\d{4}\\/\\d{2}\\/\\d{2}\\/vacature-[^?#]+$' }, loader);
+  assert.equal(resolution.method, 'ENTRY_JOB_PATTERN');
+});
