@@ -4,7 +4,7 @@ import { scoreSourcePage } from '../src/discovery.js';
 import { extractCandidates } from '../src/extract.js';
 import { verifyJobPage } from '../src/verify.js';
 
-function page(url, html) { return { requestedUrl: url, finalUrl: url, html, error: null, method: 'CHEERIO' }; }
+function page(url, html) { return { requestedUrl: url, finalUrl: url, html, text: String(html).replace(/<[^>]+>/g, ' '), error: null, method: 'CHEERIO' }; }
 
 test('Melly About page with an exact Vacancies section is accepted as a source even with zero jobs', () => {
   const url = 'https://www.kunstinstituutmelly.nl/en/about';
@@ -35,9 +35,19 @@ test('internship title remains excluded', () => {
   assert.equal(result.reason, 'excluded employment type');
 });
 
-test('Kunsthal generic CTA links inherit the preceding vacancy heading', () => {
+test('Kunsthal CTA links inherit vacancy headings, including a non-vacature detail URL', () => {
   const url = 'https://www.kunsthal.nl/nl/over-de-kunsthal/organisatie/werken-bij-de-kunsthal/';
-  const html = '<html><body><main><h3>Manager Partnerships</h3><p>(32 - 36 uur)</p><p>Lees <a href="/nl/over-de-kunsthal/organisatie/werken-bij-de-kunsthal/vacature-manager-partnerships/">hier de hele vacature.</a></p><h3>Medewerker Productie Tentoonstellingen</h3><p>(32-36 uur)</p><p><a href="/nl/over-de-kunsthal/organisatie/werken-bij-de-kunsthal/vacature-medewerker-productie-tentoonstellingen/">Lees hier de hele vacature!</a></p></main></body></html>';
+  const html = '<html><body><main><h2>Werken bij de Kunsthal</h2><h3>Manager Partnerships</h3><p>(32 - 36 uur)</p><p><a href="/nl/over-de-kunsthal/organisatie/werken-bij-de-kunsthal/vacature-manager-partnerships/">Lees hier de hele vacature.</a></p><h3>Medewerker beveiliging</h3><p>(18, 24 of 36 uur)</p><p><a href="/nl/medewerker-beveiliging/">Lees hier de volledige vacature en solliciteer!</a></p><h3>Coördinator Hospitality & Events</h3><p>(36 uur)</p><p><a href="/nl/over-de-kunsthal/organisatie/werken-bij-de-kunsthal/vacature-coordinator-hospitality-events-2026/">Lees hier de hele vacature.</a></p><h3>Medewerker Productie Tentoonstellingen</h3><p>(32-36 uur)</p><p><a href="/nl/over-de-kunsthal/organisatie/werken-bij-de-kunsthal/vacature-medewerker-productie-tentoonstellingen/">Lees hier de hele vacature!</a></p><h3>Stagiair marketing & communicatie</h3><p>(32 - 36 uur)</p><p><a href="/nl/over-de-kunsthal/organisatie/werken-bij-de-kunsthal/stage-marketing-en-communicatie/">Bekijk hier de volledige vacature en solliciteer!</a></p></main></body></html>';
   const candidates = extractCandidates(page(url, html), { jobUrlPattern: '' });
-  assert.deepEqual(candidates.map((candidate) => candidate.title), ['Manager Partnerships', 'Medewerker Productie Tentoonstellingen']);
+  assert.deepEqual(candidates.map((candidate) => candidate.title), ['Manager Partnerships', 'Medewerker beveiliging', 'Coördinator Hospitality & Events', 'Medewerker Productie Tentoonstellingen', 'Stagiair marketing & communicatie']);
+});
+
+test('linked Kunsthal job uses the detail page title and ignores internship text from the source card container', () => {
+  const sourceUrl = 'https://www.kunsthal.nl/nl/over-de-kunsthal/organisatie/werken-bij-de-kunsthal/';
+  const url = 'https://www.kunsthal.nl/nl/over-de-kunsthal/organisatie/werken-bij-de-kunsthal/vacature-manager-partnerships/';
+  const detailHtml = '<html><head><title>Vacature Manager Partnerships - Kunsthal</title></head><body><main><h1>Vacature Manager Partnerships</h1><h3>Manager Partnerships (32 - 36 uur)</h3><p>Salaris volgens Museum-cao.</p><p>Een arbeidsovereenkomst voor de duur van één jaar.</p><p>Solliciteren kan tot uiterlijk 24 augustus 2026.</p></main></body></html>';
+  const candidate = { title: 'Werken bij de Kunsthal', url, sourceUrl, method: 'DETAIL_LINK', employmentText: 'Werken bij de Kunsthal Stagiair marketing & communicatie meewerkstage', identityProof: true };
+  const result = verifyJobPage(candidate, page(url, detailHtml));
+  assert.equal(result.decision, 'VERIFIED');
+  assert.equal(result.title, 'Manager Partnerships');
 });
