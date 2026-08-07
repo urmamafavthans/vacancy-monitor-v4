@@ -39,6 +39,10 @@ The workflow installs dependencies and Chromium, runs regression tests first, th
 
 A technically green run is not final acceptance. Review `VACANCY_LOG`, `SCAN_DIAGNOSTICS`, and the resolved source/status fields in `URL_MASTER` before expanding the source set.
 
+## POC correction cycle
+
+POC run #1 validated the infrastructure but exposed source-recognition, page-scope, and Sheet-row-placement issues. Commit `96d3e53c8b7352c29749f66c47f63abf2f4a8841` contains the first correction set. A second manual POC run is required before acceptance.
+
 ## Legacy Apps Script
 
 The v3.4 Apps Script crawler is archived. Remove its installable time-driven trigger before operating v4. Keep the script code until v4 is accepted; deleting code is not a substitute for deleting the trigger.
