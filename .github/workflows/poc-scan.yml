@@ -2,6 +2,17 @@ name: Vacancy Monitor v4 — POC Scan
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'package.json'
+      - '.github/workflows/poc-scan.yml'
+  schedule:
+    - cron: '17 * * * *'
+      timezone: 'Europe/Amsterdam'
 
 permissions:
   contents: read
@@ -48,3 +59,8 @@ jobs:
           SPREADSHEET_ID: 1g_2mRUa8M7DouWljcZyDuj_oLKdZiyLHS5SeBOTbVOE
           CRAWLEE_STORAGE_DIR: ${{ runner.temp }}/vacancy-monitor-crawlee
           CI: 'true'
+
+      - name: Review POC acceptance gates
+        run: npm run review:poc
+        env:
+          SPREADSHEET_ID: 1g_2mRUa8M7DouWljcZyDuj_oLKdZiyLHS5SeBOTbVOE
