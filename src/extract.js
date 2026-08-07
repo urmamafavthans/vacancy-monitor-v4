@@ -2,7 +2,7 @@ import * as cheerio from 'cheerio';
 import { hasEmploymentEvidence, isGenericNavigationTitle, normalizeTitle } from './rules.js';
 import { isKnownAtsUrl, normalizeHttpUrl } from './discovery.js';
 
-const GENERIC_LINK_TEXT = /^(?:read more|learn more|more|view|view vacancy|bekijk(?: de| deze)? vacature|lees(?: hier)?(?: de| deze)?(?: hele| volledige)? vacature|solliciteer(?: hier)?|apply(?: now)?|details?)[.!\s]*$/i;
+const GENERIC_LINK_TEXT = /^(?:read more|learn more|more|view|view vacancy|hier(?: de| deze)?(?: hele| volledige)? vacature|bekijk(?: de| deze)? vacature|lees(?: hier)?(?: de| deze)?(?: hele| volledige)? vacature|solliciteer(?: hier)?|apply(?: now)?|details?)[.!\s]*$/i;
 const DETAIL_PATH = /(?:\/vacature-[^/?#]+|\/(?:vacatures?|vacancies|vacancy|jobs?|careers?)\/[^/?#]{2,}|\/jobs?\/\d+)/i;
 const APPLY_TEXT = /\b(?:apply|solliciteer|solliciteren|reageer|application|aanmelden)\b/i;
 function cleanText(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
