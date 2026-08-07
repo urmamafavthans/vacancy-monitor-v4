@@ -28,10 +28,10 @@ const MONTHS = new Map(Object.entries({
 function isoDate(year, month, day) { return `${String(year).padStart(4,'0')}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`; }
 function closingDate(text, nowIso) {
   const value = cleanText(text);
-  const numeric = value.match(/\b(?:deadline|uiterlijk|tot(?: en met)?|t\/m|before|until)?\s*(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})\b/i);
+  const numeric = value.match(/\b(?:deadline|uiterlijk|tot(?: en met)?|t\/m|before|until|solliciteren\s+(?:kan\s+)?(?:tot|t\/m|uiterlijk))\s*(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})\b/i);
   if (numeric) return isoDate(Number(numeric[3]), Number(numeric[2]), Number(numeric[1]));
   const monthPattern = [...MONTHS.keys()].join('|');
-  const named = value.match(new RegExp(`\\b(?:deadline|uiterlijk|tot(?: en met)?|t\\/m|reageren kan tot(?: en met)?|solliciteren kan(?: tot| t\\/m)?|before|until)?\\s*(?:\\w+\\s+)?(\\d{1,2})\\s+(${monthPattern})(?:\\s+(\\d{4}))?\\b`, 'i'));
+  const named = value.match(new RegExp(`\\b(?:deadline|uiterlijk|tot(?: en met)?|t\\/m|reageren kan tot(?: en met)?|solliciteren(?: kan)?(?: tot| t\\/m| uiterlijk)|before|until)\\s*(?:\\w+\\s+)?(\\d{1,2})\\s+(${monthPattern})(?:\\s+(\\d{4}))?\\b`, 'i'));
   if (!named) return '';
   const month = MONTHS.get(named[2].toLowerCase());
   const year = Number(named[3] || String(nowIso || '').slice(0,4) || new Date().getUTCFullYear());
@@ -39,6 +39,8 @@ function closingDate(text, nowIso) {
 }
 function weeklyHours(text) {
   const value = String(text ?? '');
+  const flexible = firstMatch(value, /\b(?:uren in overleg|hours? (?:by|upon) agreement)\b/i);
+  if (flexible) return flexible;
   const options = firstMatch(value, /\b\d{1,2}(?:\s*,\s*\d{1,2})+\s*(?:of|or)\s*\d{1,2}\s*(?:uur|hours?)(?:\s*(?:per\s+week|week))?\b/i);
   if (options) return options;
   return firstMatch(value, /\b\d+(?:[.,]\d+)?\s*(?:-|–|—|tot|to)?\s*\d*(?:[.,]\d+)?\s*(?:uur|hours?)(?:\s*(?:per\s+week|p\/?w|week))?\b/i);

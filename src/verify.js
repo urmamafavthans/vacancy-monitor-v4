@@ -103,19 +103,20 @@ export function verifyJobPage(candidate, page) {
   const mainText = focusedJobText($);
   const detailPage = !sameUrl(finalUrl, candidate.sourceUrl);
   const relevant = detailPage ? cleanText(mainText) : cleanText(candidate.inlineSectionText || candidate.employmentText || mainText);
-  if (isExplicitlyExcludedEmployment(relevant)) return { decision: 'REJECTED', reason: 'excluded employment type', evidence: relevant.slice(0, 500), employmentText: relevant, title };
+  const employmentText = candidate.method === 'VACANCY_DOCUMENT_LINK' ? cleanText(`${candidate.employmentText || ''} ${relevant}`) : relevant;
+  if (isExplicitlyExcludedEmployment(employmentText)) return { decision: 'REJECTED', reason: 'excluded employment type', evidence: employmentText.slice(0, 500), employmentText, title };
 
   const identitySignals = [];
   const headingText = headings.join(' ');
   if (pageHasJobPosting(page.html)) identitySignals.push('JobPosting');
-  if (isDedicatedDetailUrl(finalUrl, candidate.sourceUrl)) identitySignals.push('dedicated job URL');
+  if (isDedicatedDetailUrl(finalUrl, candidate.sourceUrl) || (candidate.method === 'JOB_URL_PATTERN' && !sameUrl(finalUrl, candidate.sourceUrl))) identitySignals.push('dedicated job URL');
   if (candidate.method === 'INLINE_SECTION' && candidate.identityProof) identitySignals.push('isolated inline vacancy section');
   if (hasDedicatedApplication($)) identitySignals.push('application CTA/form');
   if (titleMatches(title, headingText) || titleMatches(title, documentTitle)) identitySignals.push('title match');
   if (isKnownAtsUrl(finalUrl) && titleMatches(title, `${headingText} ${documentTitle}`)) identitySignals.push('ATS job page');
   if (candidate.method === 'VACANCY_DOCUMENT_LINK' && /application\/pdf/i.test(page.contentType || '') && titleMatches(title, `${documentTitle} ${mainText.slice(0, 1000)}`)) identitySignals.push('vacancy document title match');
   const gateA = identitySignals.includes('JobPosting') || identitySignals.includes('ATS job page') || identitySignals.includes('vacancy document title match') || (identitySignals.includes('dedicated job URL') && identitySignals.includes('title match')) || (identitySignals.includes('application CTA/form') && identitySignals.includes('title match')) || identitySignals.includes('isolated inline vacancy section');
-  if (!gateA) return { decision: 'REJECTED', reason: 'missing independent vacancy identity proof', evidence: identitySignals.join(', ') || 'no identity signals', employmentText: relevant, title };
-  if (!hasEmploymentEvidence(relevant)) return { decision: 'AMBIGUOUS', reason: 'vacancy identity present but employment evidence missing', evidence: identitySignals.join(', '), employmentText: relevant, title };
-  return { decision: 'VERIFIED', reason: 'identity and employment evidence present', evidence: identitySignals.join(', '), employmentText: relevant, title };
+  if (!gateA) return { decision: 'REJECTED', reason: 'missing independent vacancy identity proof', evidence: identitySignals.join(', ') || 'no identity signals', employmentText, title };
+  if (!hasEmploymentEvidence(employmentText)) return { decision: 'AMBIGUOUS', reason: 'vacancy identity present but employment evidence missing', evidence: identitySignals.join(', '), employmentText, title };
+  return { decision: 'VERIFIED', reason: 'identity and employment evidence present', evidence: identitySignals.join(', '), employmentText, title };
 }

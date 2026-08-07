@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scoreSourcePage } from '../src/discovery.js';
+import { resolveVacancySource, scoreSourcePage } from '../src/discovery.js';
 import { extractCandidates } from '../src/extract.js';
 import { needsBrowserValidation, pageFromPdfText } from '../src/loader.js';
 import { normalizeVerifiedVacancy } from '../src/normalize.js';
@@ -124,4 +124,34 @@ test('vacancy PDF links retain their role title and use document verification', 
   const result = verifyJobPage(candidate, documentPage);
   assert.equal(result.decision, 'VERIFIED');
   assert.equal(result.title, 'Spoelkeukenmedewerker');
+  const normalized = normalizeVerifiedVacancy(candidate, { institution: 'Example', city: 'Nijmegen', travelTimeMinutes: '75' }, result, '2026-08-07T12:00:00.000Z');
+  assert.equal(normalized.values[9], '');
+  assert.equal(normalized.values[10], 'uren in overleg');
+});
+
+test('spaced PDF hour digits are repaired before normalization', () => {
+  const pdfUrl = 'https://cdn.example.org/VacatureKok.pdf';
+  const documentPage = pageFromPdfText(pdfUrl, 'ZELFSTANDIG WERKEND KOK\nMINIMAAL 2 4 UUR EN START 1 AUGUSTUS\nSalaris conform CAO. Solliciteer per e-mail.');
+  const candidate = { title: 'Vacature Zelfstandig werkend kok', url: pdfUrl, sourceUrl: 'https://example.org/vacatures/', method: 'VACANCY_DOCUMENT_LINK', employmentText: '', identityProof: true, structured: null };
+  const result = verifyJobPage(candidate, documentPage);
+  const normalized = normalizeVerifiedVacancy(candidate, { institution: 'Example', city: 'Nijmegen', travelTimeMinutes: '75' }, result, '2026-08-07T12:00:00.000Z');
+  assert.equal(normalized.values[9], '');
+  assert.equal(normalized.values[10], '24 UUR');
+});
+
+test('explicit job URL patterns count as dedicated detail-page identity proof', () => {
+  const sourceUrl = 'https://example.org/werkenbij/';
+  const detailUrl = 'https://example.org/werkenbij/lid-raad-van-toezicht';
+  const html = '<html><head><title>Vacature: Lid raad van toezicht</title></head><body><main><h1>Vacature: Lid raad van toezicht</h1><p>Bezoldiging volgens de geldende cao. Reageer uiterlijk 6 september 2026.</p></main></body></html>';
+  const result = verifyJobPage({ title: 'Vacature: Lid raad van toezicht', url: detailUrl, sourceUrl, method: 'JOB_URL_PATTERN', employmentText: '', identityProof: true }, page(detailUrl, html));
+  assert.equal(result.decision, 'VERIFIED');
+});
+
+test('a low-information server page is browser-validated before source resolution fails', async () => {
+  const url = 'https://example.org/info/join/';
+  const server = page(url, '<html><body><main><h1>Join</h1><p>Community information only.</p></main></body></html>');
+  const rendered = { ...page(url, '<html><body><main><h1>Join</h1><h2>Example vacancies</h2><a href="/vacature-producer">Vacature Producer</a></main></body></html>'), method: 'PLAYWRIGHT' };
+  const loader = async (urls, options = {}) => new Map(urls.map((item) => [item, options.forceBrowser ? rendered : server]));
+  const resolution = await resolveVacancySource({ entryUrl: url, resolvedVacancyUrl: '', crawlDepth: 2 }, loader);
+  assert.equal(resolution.method, 'ENTRY_BROWSER_VALIDATED');
 });

@@ -143,6 +143,13 @@ export async function resolveVacancySource(source, loader) {
     const best = await bestLoadedSource(direct.map((item) => item.url), loader);
     if (best && best.score >= 6) return { resolvedUrl: best.page.finalUrl, method: isKnownAtsUrl(best.page.finalUrl) ? 'EXTERNAL_ATS' : 'VACANCY_LINK', page: best.page, trace: [...trace, `direct source score=${best.score}`] };
   }
+  if (entry.method === 'CHEERIO' && !direct.length) {
+    const renderedPages = await loader([source.entryUrl], { forceBrowser: true });
+    const rendered = renderedPages.get(source.entryUrl);
+    const renderedScore = scoreSourcePage(rendered);
+    trace.push(`browser entry score=${renderedScore}`);
+    if (rendered && !rendered.error && renderedScore >= 6) return { resolvedUrl: rendered.finalUrl, method: 'ENTRY_BROWSER_VALIDATED', page: rendered, trace };
+  }
   const sitemap = await sitemapCandidates(entry.finalUrl, loader);
   trace.push(`sitemap candidates=${sitemap.length}`);
   if (sitemap.length) {

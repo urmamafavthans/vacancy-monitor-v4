@@ -39,8 +39,9 @@ function escapeHtml(value) {
 }
 
 export function pageFromPdfText(url, text) {
-  const clean = cleanText(text);
-  const firstLine = String(text ?? '').split(/\r?\n/).map(cleanText).find(Boolean) || '';
+  const repaired = String(text ?? '').replace(/\b(\d)\s+(\d)\s+(?=uur\b)/gi, '$1$2 ');
+  const clean = cleanText(repaired);
+  const firstLine = repaired.split(/\r?\n/).map(cleanText).find(Boolean) || '';
   return {
     requestedUrl: url,
     finalUrl: url,
@@ -133,13 +134,14 @@ async function loadWithBrowser(urls) {
   return results;
 }
 
-export async function loadPages(urls, { browserFallback = true } = {}) {
+export async function loadPages(urls, { browserFallback = true, forceBrowser = false } = {}) {
   const unique = [...new Set(urls.filter(Boolean))];
   if (!unique.length) return new Map();
   const pdfUrls = unique.filter((url) => /\.pdf(?:$|[?#])/i.test(url));
   const htmlUrls = unique.filter((url) => !pdfUrls.includes(url));
-  const [primary, pdfPages] = await Promise.all([loadWithCheerio(htmlUrls), loadPdfPages(pdfUrls)]);
+  const [primary, pdfPages] = await Promise.all([forceBrowser ? loadWithBrowser(htmlUrls) : loadWithCheerio(htmlUrls), loadPdfPages(pdfUrls)]);
   for (const [url, page] of pdfPages) primary.set(url, page);
+  if (forceBrowser) return primary;
   if (!browserFallback) return primary;
   const fallbackUrls = htmlUrls.filter((url) => {
     const page = primary.get(url);
