@@ -1,18 +1,20 @@
 {
   "name": "vacancy-monitor-v4",
-  "version": "4.0.0-preflight",
+  "version": "4.1.0-poc",
   "private": true,
   "type": "module",
   "description": "Verified vacancy monitor: Google Sheets control panel + GitHub Actions + Crawlee.",
-  "engines": {
-    "node": ">=22"
-  },
+  "engines": {"node": ">=22"},
   "scripts": {
     "test": "node --test",
     "preflight": "node src/preflight.js",
-    "scan": "node src/main.js"
+    "scan": "node src/main.js",
+    "scan:poc": "POC_ONLY=true node src/main.js"
   },
   "dependencies": {
-    "googleapis": "^160.0.0"
+    "cheerio": "1.2.0",
+    "crawlee": "3.18.0",
+    "googleapis": "160.0.0",
+    "playwright": "1.62.1"
   }
 }

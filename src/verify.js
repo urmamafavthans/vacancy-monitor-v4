@@ -1,58 +1,45 @@
-const GENERIC_NAVIGATION_TITLES = new Set([
-  'visit',
-  'bezoek',
-  'who we are',
-  'wie we zijn',
-  'what we do',
-  'wat we doen',
-  'the building',
-  'het gebouw',
-  'support us',
-  'steun ons',
-  'organization',
-  'organisatie',
-  'opening hours',
-  'openingstijden',
-  'partners',
-  'team',
-  'home',
-  'shop',
-  'winkel',
-  'newsletter',
-  'see also',
-  'zie ook',
-]);
+import * as cheerio from 'cheerio';
+import { isKnownAtsUrl } from './discovery.js';
+import { hasEmploymentEvidence, isExplicitlyExcludedEmployment, isGenericNavigationTitle, isVolunteerOnlyTitle, normalizeTitle, verifyCandidate } from './rules.js';
+export { hasEmploymentEvidence, isExplicitlyExcludedEmployment, isGenericNavigationTitle, normalizeTitle, verifyCandidate };
 
-const EXCLUDED_EMPLOYMENT = /\b(?:internship|intern|trainee|traineeship|stage|stagiair|stagiaire|volunteer position|volunteer role|vrijwilligersfunctie|onbezoldigd|unpaid role|open application|open sollicitatie)\b/i;
-const EMPLOYMENT_EVIDENCE = /\b(?:apply|solliciteer|solliciteren|deadline|closing date|sluitingsdatum|salary|salaris|cao|fte|\d+(?:[.,]\d+)?\s*(?:-|–|tot|to)?\s*\d*(?:[.,]\d+)?\s*(?:uur|hours?|u\.?)(?:\s*(?:per|p\/?w|week))?|full[- ]?time|part[- ]?time|deeltijd|voltijd|freelance|zzp|employment contract|arbeidsovereenkomst)\b/i;
-
-export function normalizeTitle(title) {
-  return String(title ?? '').replace(/\s+/g, ' ').trim();
+const APPLY_TEXT = /\b(?:apply|solliciteer|solliciteren|reageer|application|aanmelden)\b/i;
+const DETAIL_PATH = /(?:\/vacature-[^/?#]+|\/(?:vacatures?|vacancies|vacancy|jobs?|careers?)\/[^/?#]{2,}|\/jobs?\/\d+)/i;
+function cleanText(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
+function pageHasJobPosting(html) { return /["']@type["']\s*:\s*["']JobPosting["']/i.test(html || ''); }
+function normalizedWords(value) { return new Set(cleanText(value).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3)); }
+function titleMatches(candidateTitle, pageTitle) {
+  const a = normalizedWords(candidateTitle); const b = normalizedWords(pageTitle); if (!a.size || !b.size) return false;
+  let overlap = 0; for (const word of a) if (b.has(word)) overlap += 1; return overlap >= Math.min(2, a.size);
 }
-
-export function isGenericNavigationTitle(title) {
-  return GENERIC_NAVIGATION_TITLES.has(normalizeTitle(title).toLowerCase());
+function hasDedicatedApplication($) {
+  let found = false;
+  $('a[href], button, form[action]').each((_, node) => { const text = cleanText($(node).text()); const href = String($(node).attr('href') || $(node).attr('action') || ''); if (APPLY_TEXT.test(`${text} ${href}`)) found = true; });
+  return found;
 }
-
-export function hasEmploymentEvidence(text) {
-  return EMPLOYMENT_EVIDENCE.test(String(text ?? ''));
+function isDedicatedDetailUrl(url, sourceUrl) {
+  try { const u = new URL(url); const source = new URL(sourceUrl); if (u.toString() === source.toString()) return false; if (DETAIL_PATH.test(u.pathname)) return true; return isKnownAtsUrl(url) && (u.hostname !== source.hostname || u.pathname !== source.pathname); } catch { return false; }
 }
-
-export function isExplicitlyExcludedEmployment(text) {
-  return EXCLUDED_EMPLOYMENT.test(String(text ?? ''));
-}
-
-export function verifyCandidate({ title, identityProof = false, employmentText = '' }) {
-  const cleanTitle = normalizeTitle(title);
-  if (!cleanTitle) return { verified: false, reason: 'missing title' };
-  if (isGenericNavigationTitle(cleanTitle)) return { verified: false, reason: 'generic navigation title' };
-
-  const combined = `${cleanTitle} ${employmentText}`;
-  if (isExplicitlyExcludedEmployment(combined)) {
-    return { verified: false, reason: 'excluded employment type' };
-  }
-  if (!identityProof) return { verified: false, reason: 'missing vacancy identity proof' };
-  if (!hasEmploymentEvidence(combined)) return { verified: false, reason: 'missing employment evidence' };
-
-  return { verified: true, reason: 'identity and employment evidence present' };
+export function verifyJobPage(candidate, page) {
+  const title = normalizeTitle(candidate.title);
+  if (!title) return { decision: 'REJECTED', reason: 'missing title', evidence: '' };
+  if (isGenericNavigationTitle(title)) return { decision: 'REJECTED', reason: 'generic navigation title', evidence: title };
+  if (isVolunteerOnlyTitle(title)) return { decision: 'REJECTED', reason: 'volunteer-only title', evidence: title };
+  if (!page || page.error || !page.html) return { decision: 'ERROR', reason: 'job page could not be loaded', evidence: page?.error || '' };
+  const $ = cheerio.load(page.html);
+  const h1 = cleanText($('h1').first().text()); const documentTitle = cleanText($('title').first().text());
+  const mainText = cleanText($('main').first().text() || $('article').first().text() || $('body').text()).slice(0, 50000);
+  const relevant = cleanText(candidate.inlineSectionText || `${candidate.employmentText || ''} ${mainText}`);
+  if (isExplicitlyExcludedEmployment(`${title} ${relevant}`)) return { decision: 'REJECTED', reason: 'excluded employment type', evidence: relevant.slice(0, 500) };
+  const finalUrl = page.finalUrl || candidate.url; const identitySignals = [];
+  if (pageHasJobPosting(page.html)) identitySignals.push('JobPosting');
+  if (isDedicatedDetailUrl(finalUrl, candidate.sourceUrl)) identitySignals.push('dedicated job URL');
+  if (candidate.method === 'INLINE_SECTION' && candidate.identityProof) identitySignals.push('isolated inline vacancy section');
+  if (hasDedicatedApplication($)) identitySignals.push('application CTA/form');
+  if (titleMatches(title, h1) || titleMatches(title, documentTitle)) identitySignals.push('title match');
+  if (isKnownAtsUrl(finalUrl) && titleMatches(title, `${h1} ${documentTitle}`)) identitySignals.push('ATS job page');
+  const gateA = identitySignals.includes('JobPosting') || identitySignals.includes('ATS job page') || (identitySignals.includes('dedicated job URL') && identitySignals.includes('title match')) || (identitySignals.includes('application CTA/form') && identitySignals.includes('title match')) || identitySignals.includes('isolated inline vacancy section');
+  if (!gateA) return { decision: 'REJECTED', reason: 'missing independent vacancy identity proof', evidence: identitySignals.join(', ') || 'no identity signals' };
+  if (!hasEmploymentEvidence(relevant)) return { decision: 'AMBIGUOUS', reason: 'vacancy identity present but employment evidence missing', evidence: identitySignals.join(', ') };
+  return { decision: 'VERIFIED', reason: 'identity and employment evidence present', evidence: identitySignals.join(', ') };
 }

@@ -5,4 +5,5 @@ storage/
 .env.*
 service-account*.json
 credentials*.json
+gha-creds-*.json
 .DS_Store
