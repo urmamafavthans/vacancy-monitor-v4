@@ -30,12 +30,23 @@ export async function updateSourceStatus(client, source, patch) { await client.s
 export async function upsertVerifiedVacancies(client, vacancies) {
   if (!vacancies.length) return { inserted: 0, updated: 0 };
   const { data } = await client.spreadsheets.values.get({ spreadsheetId: spreadsheetId(), range: `${SHEETS.VACANCY_LOG}!A1:Q5000`, valueRenderOption: 'FORMATTED_VALUE' }); const rows = data.values ?? []; if (!rows.length) throw new Error('VACANCY_LOG is empty.'); assertVacancyLogSchema(rows[0]);
-  const byFingerprint = new Map(); rows.slice(1).forEach((row, index) => { const fp = String(row[15] ?? '').trim(); if (fp) byFingerprint.set(fp, index + 2); });
+  const byFingerprint = new Map();
+  const occupiedRows = new Set();
+  rows.slice(1).forEach((row, index) => {
+    const rowNumber = index + 2;
+    if (row.some((cell) => String(cell ?? '').trim() !== '')) occupiedRows.add(rowNumber);
+    const fp = String(row[15] ?? '').trim(); if (fp) byFingerprint.set(fp, rowNumber);
+  });
+  function nextAvailableRow() { let row = 2; while (occupiedRows.has(row)) row += 1; occupiedRows.add(row); return row; }
   let inserted = 0; let updated = 0;
   for (const vacancy of vacancies) {
     const rowNumber = byFingerprint.get(vacancy.fingerprint);
-    if (rowNumber) { await client.spreadsheets.values.update({ spreadsheetId: spreadsheetId(), range: `${SHEETS.VACANCY_LOG}!B${rowNumber}:Q${rowNumber}`, valueInputOption: 'RAW', requestBody: { values: [vacancy.values.slice(1)] } }); updated += 1; }
-    else { await client.spreadsheets.values.append({ spreadsheetId: spreadsheetId(), range: `${SHEETS.VACANCY_LOG}!A:Q`, valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS', requestBody: { values: [vacancy.values] } }); inserted += 1; byFingerprint.set(vacancy.fingerprint, -1); }
+    if (rowNumber) {
+      await client.spreadsheets.values.update({ spreadsheetId: spreadsheetId(), range: `${SHEETS.VACANCY_LOG}!B${rowNumber}:Q${rowNumber}`, valueInputOption: 'RAW', requestBody: { values: [vacancy.values.slice(1)] } }); updated += 1;
+    } else {
+      const targetRow = nextAvailableRow();
+      await client.spreadsheets.values.update({ spreadsheetId: spreadsheetId(), range: `${SHEETS.VACANCY_LOG}!A${targetRow}:Q${targetRow}`, valueInputOption: 'RAW', requestBody: { values: [vacancy.values] } }); inserted += 1; byFingerprint.set(vacancy.fingerprint, targetRow);
+    }
   }
   return { inserted, updated };
 }

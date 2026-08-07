@@ -2,7 +2,7 @@ import * as cheerio from 'cheerio';
 import { hasEmploymentEvidence, isGenericNavigationTitle, normalizeTitle } from './rules.js';
 import { isKnownAtsUrl, normalizeHttpUrl } from './discovery.js';
 
-const GENERIC_LINK_TEXT = /^(?:read more|learn more|more|view|view vacancy|bekijk vacature|lees meer|solliciteer|apply|details?)$/i;
+const GENERIC_LINK_TEXT = /^(?:read more|learn more|more|view|view vacancy|bekijk(?: de| deze)? vacature|lees(?: hier)?(?: de| deze)?(?: hele| volledige)? vacature|solliciteer(?: hier)?|apply(?: now)?|details?)[.!\s]*$/i;
 const DETAIL_PATH = /(?:\/vacature-[^/?#]+|\/(?:vacatures?|vacancies|vacancy|jobs?|careers?)\/[^/?#]{2,}|\/jobs?\/\d+)/i;
 const APPLY_TEXT = /\b(?:apply|solliciteer|solliciteren|reageer|application|aanmelden)\b/i;
 function cleanText(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
@@ -28,19 +28,36 @@ function structuredEmploymentText(job) {
   return cleanText(parts.filter(Boolean).join(' '));
 }
 function compileOptionalPattern(pattern) { if (!pattern) return null; try { return new RegExp(pattern, 'i'); } catch { return null; } }
-function headingFromContainer($, element) {
-  const container = $(element).closest('article, li, section, [class*="job"], [class*="vacan"], [class*="career"], [class*="position"], [class*="role"], [data-job]');
-  return { container, heading: cleanText(container.find('h1,h2,h3,h4,h5,h6').first().text()) };
-}
 function looksLikeDetailUrl(url, sourceUrl, explicitPattern) {
   if (explicitPattern?.test(new URL(url).pathname)) return true;
   if (DETAIL_PATH.test(new URL(url).pathname)) return true;
   if (isKnownAtsUrl(url)) { try { const u = new URL(url); const source = new URL(sourceUrl); return u.pathname !== '/' && (u.hostname !== source.hostname || u.pathname !== source.pathname); } catch { return false; } }
   return false;
 }
+function nearestPrecedingHeading($, element) {
+  let node = $(element);
+  for (let depth = 0; depth < 6 && node.length; depth += 1) {
+    const own = cleanText(node.find('h1,h2,h3,h4,h5,h6').first().text());
+    if (own) return own;
+    const siblings = node.prevAll();
+    for (let i = 0; i < siblings.length; i += 1) {
+      const sibling = siblings.eq(i);
+      if (/^h[1-6]$/i.test(sibling[0]?.tagName || '')) return cleanText(sibling.text());
+      const nested = cleanText(sibling.find('h1,h2,h3,h4,h5,h6').last().text());
+      if (nested) return nested;
+    }
+    node = node.parent();
+    if (node.is('body,html')) break;
+  }
+  return '';
+}
 function candidateTitleFromAnchor($, element) {
-  const anchor = $(element); let title = cleanText(anchor.text()); const { container, heading } = headingFromContainer($, element);
-  if (!title || GENERIC_LINK_TEXT.test(title)) title = heading;
+  const anchor = $(element); let title = cleanText(anchor.text());
+  const container = anchor.closest('article, li, section, [class*="job"], [class*="vacan"], [class*="career"], [class*="position"], [class*="role"], [data-job]');
+  if (!title || GENERIC_LINK_TEXT.test(title)) {
+    const containerHeading = cleanText(container.find('h1,h2,h3,h4,h5,h6').first().text());
+    title = containerHeading || nearestPrecedingHeading($, element);
+  }
   return { title: normalizeTitle(title), container };
 }
 function extractLinkedCandidates(html, pageUrl, source) {

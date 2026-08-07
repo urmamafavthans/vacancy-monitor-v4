@@ -2,8 +2,9 @@ import * as cheerio from 'cheerio';
 import { DISCOVERY_TERMS, KNOWN_ATS_HOST_HINTS, SOURCE_TERMS } from './config.js';
 
 const GENERIC_BAD_SCHEMES = /^(?:mailto:|tel:|javascript:|data:)/i;
-const SOURCE_PATH = /\/(?:vacatures?|vacancies|jobs?|careers?|werken[-_]?bij|work[-_]?with[-_]?us|join[-_]?us)\/?$/i;
-const SOURCE_LABEL = /^(?:vacatures?|vacancies|vacancy|jobs?|careers?|werken bij(?: ons)?|work with us|join us)$/i;
+const NON_HTML_ASSET = /\.(?:pdf|docx?|xlsx?|pptx?|zip|rar|7z|jpe?g|png|gif|webp|svg|mp[34]|mov|avi|wav)(?:$|[?#])/i;
+const SOURCE_PATH = /\/(?:vacatures?|vacancies|jobs?|careers?|werken[-_]?bij(?:[-_][^/?#]+)*|work[-_]?with[-_]?us|join[-_]?us)\/?$/i;
+const SOURCE_LABEL = /^(?:vacatures?|vacancies|vacancy|jobs?|careers?|werken bij(?: ons)?|work with us|join us|opportunities)$/i;
 function cleanText(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
 
 export function normalizeHttpUrl(href, baseUrl) {
@@ -24,6 +25,7 @@ export function isKnownAtsUrl(url) {
   } catch { return false; }
 }
 function isSourceLikePath(url) { try { return SOURCE_PATH.test(new URL(url).pathname); } catch { return false; } }
+function isHtmlDiscoveryCandidate(url) { try { return !NON_HTML_ASSET.test(new URL(url).pathname); } catch { return false; } }
 function pageHasJobPosting(html) { return /["']@type["']\s*:\s*["']JobPosting["']/i.test(html || ''); }
 
 export function extractAnchors(html, baseUrl) {
@@ -44,7 +46,7 @@ export function scoreVacancyLink({ url, text }, baseUrl) {
   const combined = `${text} ${url}`;
   if (isKnownAtsUrl(url)) score += 12;
   if (SOURCE_LABEL.test(cleanText(text))) score += 9;
-  else if (/\b(?:vacatures|vacancies|careers|werken bij|join us|work with us)\b/i.test(text)) score += 6;
+  else if (/\b(?:vacatures|vacancies|careers|werken bij|join us|work with us|opportunities)\b/i.test(text)) score += 6;
   if (isSourceLikePath(url)) score += 7;
   try { if (new URL(url).origin !== new URL(baseUrl).origin && !isKnownAtsUrl(url)) score -= 8; } catch {}
   if (/privacy|cookie|newsletter|shop|ticket|donate|support/i.test(combined)) score -= 10;
@@ -62,6 +64,9 @@ export function scoreSourcePage(page) {
   if (isSourceLikePath(url)) score += 7;
   if (SOURCE_TERMS.test(title) && !pageHasJobPosting(page.html)) score += 4;
   if (SOURCE_TERMS.test(h1) && !pageHasJobPosting(page.html)) score += 5;
+  let sourceHeadings = 0;
+  $('h2,h3,h4,h5,h6').each((_, node) => { if (SOURCE_LABEL.test(cleanText($(node).text()))) sourceHeadings += 1; });
+  if (sourceHeadings) score += 7;
   if (pageHasJobPosting(page.html) && !isSourceLikePath(url) && !isKnownAtsUrl(url)) score -= 6;
   const vacancyLinks = extractAnchors(page.html, url).filter((link) => scoreVacancyLink(link, url) >= 6);
   if (vacancyLinks.length >= 2) score += 3;
@@ -71,11 +76,16 @@ export function scoreSourcePage(page) {
 
 function sourceCandidateLinks(page) {
   const base = page.finalUrl || page.requestedUrl;
-  return extractAnchors(page.html, base).map((link) => ({ ...link, score: scoreVacancyLink(link, base) })).filter((link) => link.score >= 6).sort((a, b) => b.score - a.score);
+  return extractAnchors(page.html, base)
+    .filter((link) => isHtmlDiscoveryCandidate(link.url))
+    .map((link) => ({ ...link, score: scoreVacancyLink(link, base) }))
+    .filter((link) => link.score >= 6)
+    .sort((a, b) => b.score - a.score);
 }
 function exploratoryLinks(page, entryOrigin) {
   const base = page.finalUrl || page.requestedUrl;
   return extractAnchors(page.html, base)
+    .filter((link) => isHtmlDiscoveryCandidate(link.url))
     .filter((link) => { try { return new URL(link.url).origin === entryOrigin; } catch { return false; } })
     .map((link) => {
       const pathText = new URL(link.url).pathname.replace(/[-_]/g, ' ');
@@ -87,7 +97,7 @@ function exploratoryLinks(page, entryOrigin) {
     }).filter((link) => link.score >= 3).sort((a, b) => b.score - a.score);
 }
 async function bestLoadedSource(urls, loader) {
-  const unique = [...new Set(urls)].slice(0, 10);
+  const unique = [...new Set(urls.filter(isHtmlDiscoveryCandidate))].slice(0, 10);
   const pages = await loader(unique);
   let best = null;
   for (const url of unique) {
@@ -106,7 +116,7 @@ async function sitemapCandidates(entryUrl, loader) {
   if (!page?.html || page.error) return [];
   const $ = cheerio.load(page.html, { xmlMode: true });
   const urls = [];
-  $('loc').each((_, node) => { const url = cleanText($(node).text()); if (url && isSourceLikePath(url)) urls.push(url); });
+  $('loc').each((_, node) => { const url = cleanText($(node).text()); if (url && isSourceLikePath(url) && isHtmlDiscoveryCandidate(url)) urls.push(url); });
   return [...new Set(urls)].slice(0, 20);
 }
 

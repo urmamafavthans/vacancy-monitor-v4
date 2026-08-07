@@ -29,4 +29,6 @@ export const KNOWN_ATS_HOST_HINTS = Object.freeze([
 ]);
 
 export const SOURCE_TERMS = /(?:vacatures?|vacancies|vacancy|jobs?|careers?|werken[\s-]*bij|join[\s-]*us|employment|opportunit(?:y|ies)|recruitment)/i;
-export const DISCOVERY_TERMS = /(?:about|over[\s-]*(?:ons|het)|organisatie|organization|team|people|contact|museum|instituut|institution)/i;
+// Discovery deliberately avoids generic institution-name words such as "museum" or "instituut".
+// Those terms caused irrelevant reports/media links to be followed during the first POC run.
+export const DISCOVERY_TERMS = /(?:about|over[\s-]*(?:ons|het)|organisatie|organization|organisation|team|people|contact|opportunit(?:y|ies)|werken[\s-]*bij|careers?)/i;

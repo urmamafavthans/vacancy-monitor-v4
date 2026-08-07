@@ -6,15 +6,17 @@ const GENERIC_NAVIGATION_TITLES = new Set([
   'jobs','careers','werken bij','werken bij ons','join us',
 ]);
 
-const EXCLUDED_EMPLOYMENT = /\b(?:internship|intern|trainee|traineeship|stage|stagiair|stagiaire|volunteer position|volunteer role|vrijwilligersfunctie|vrijwilligerswerk|onbezoldigd|unpaid role|unpaid position|open application|open sollicitatie)\b/i;
+const EXCLUDED_TITLE = /^(?:internship|intern|trainee|traineeship|stage|stagiair|stagiaire)\b/i;
+const EXCLUDED_EMPLOYMENT = /\b(?:internship|traineeship|stageplaats|meewerkstage|afstudeerstage|stagevergoeding|stagiair|stagiaire|volunteer position|volunteer role|vrijwilligersfunctie|vrijwilligerswerk|onbezoldigd|unpaid role|unpaid position|open application|open sollicitatie)\b/i;
 const VOLUNTEER_ONLY_TITLE = /^(?:volunteer|vrijwilliger|vrijwilligers?)$/i;
-const EMPLOYMENT_EVIDENCE = /\b(?:apply|solliciteer|solliciteren|reageer|deadline|closing date|sluitingsdatum|salary|salaris|cao|fte|\d+(?:[.,]\d+)?\s*(?:-|–|—|tot|to)?\s*\d*(?:[.,]\d+)?\s*(?:uur|hours?|u\.?)(?:\s*(?:per|p\/?w|week))?|full[- ]?time|part[- ]?time|deeltijd|voltijd|freelance|zzp|employment contract|arbeidsovereenkomst|contractduur|contract type|dienstverband)\b/i;
+const EMPLOYMENT_EVIDENCE = /\b(?:apply|solliciteer|solliciteren|reageer|deadline|closing date|sluitingsdatum|salary|salaris|cao|fte|\d+(?:[.,]\d+)?\s*(?:-|–|—|tot|to)?\s*\d*(?:[.,]\d+)?\s*(?:uur|hours?|u\.?)(?:\s*(?:per|p\/?w|week))?|full[- ]?time|part[- ]?time|deeltijd|voltijd|freelance|zzp|employment contract|arbeidsovereenkomst|contractduur|contract type|dienstverband|aanstelling|projectaanstelling)\b/i;
 
 function cleanText(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
 export function normalizeTitle(title) { return cleanText(title); }
 export function isGenericNavigationTitle(title) { return GENERIC_NAVIGATION_TITLES.has(normalizeTitle(title).toLowerCase()); }
 export function hasEmploymentEvidence(text) { return EMPLOYMENT_EVIDENCE.test(String(text ?? '')); }
 export function isExplicitlyExcludedEmployment(text) { return EXCLUDED_EMPLOYMENT.test(String(text ?? '')); }
+export function isExcludedTitle(title) { return EXCLUDED_TITLE.test(normalizeTitle(title)); }
 export function isVolunteerOnlyTitle(title) { return VOLUNTEER_ONLY_TITLE.test(normalizeTitle(title)); }
 
 export function verifyCandidate({ title, identityProof = false, employmentText = '' }) {
@@ -22,9 +24,8 @@ export function verifyCandidate({ title, identityProof = false, employmentText =
   if (!cleanTitle) return { verified: false, reason: 'missing title' };
   if (isGenericNavigationTitle(cleanTitle)) return { verified: false, reason: 'generic navigation title' };
   if (isVolunteerOnlyTitle(cleanTitle)) return { verified: false, reason: 'volunteer-only title' };
-  const combined = `${cleanTitle} ${employmentText}`;
-  if (isExplicitlyExcludedEmployment(combined)) return { verified: false, reason: 'excluded employment type' };
+  if (isExcludedTitle(cleanTitle) || isExplicitlyExcludedEmployment(employmentText)) return { verified: false, reason: 'excluded employment type' };
   if (!identityProof) return { verified: false, reason: 'missing vacancy identity proof' };
-  if (!hasEmploymentEvidence(combined)) return { verified: false, reason: 'missing employment evidence' };
+  if (!hasEmploymentEvidence(`${cleanTitle} ${employmentText}`)) return { verified: false, reason: 'missing employment evidence' };
   return { verified: true, reason: 'identity and employment evidence present' };
 }
