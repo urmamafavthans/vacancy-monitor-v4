@@ -113,7 +113,8 @@ export function verifyJobPage(candidate, page) {
   if (hasDedicatedApplication($)) identitySignals.push('application CTA/form');
   if (titleMatches(title, headingText) || titleMatches(title, documentTitle)) identitySignals.push('title match');
   if (isKnownAtsUrl(finalUrl) && titleMatches(title, `${headingText} ${documentTitle}`)) identitySignals.push('ATS job page');
-  const gateA = identitySignals.includes('JobPosting') || identitySignals.includes('ATS job page') || (identitySignals.includes('dedicated job URL') && identitySignals.includes('title match')) || (identitySignals.includes('application CTA/form') && identitySignals.includes('title match')) || identitySignals.includes('isolated inline vacancy section');
+  if (candidate.method === 'VACANCY_DOCUMENT_LINK' && /application\/pdf/i.test(page.contentType || '') && titleMatches(title, `${documentTitle} ${mainText.slice(0, 1000)}`)) identitySignals.push('vacancy document title match');
+  const gateA = identitySignals.includes('JobPosting') || identitySignals.includes('ATS job page') || identitySignals.includes('vacancy document title match') || (identitySignals.includes('dedicated job URL') && identitySignals.includes('title match')) || (identitySignals.includes('application CTA/form') && identitySignals.includes('title match')) || identitySignals.includes('isolated inline vacancy section');
   if (!gateA) return { decision: 'REJECTED', reason: 'missing independent vacancy identity proof', evidence: identitySignals.join(', ') || 'no identity signals', employmentText: relevant, title };
   if (!hasEmploymentEvidence(relevant)) return { decision: 'AMBIGUOUS', reason: 'vacancy identity present but employment evidence missing', evidence: identitySignals.join(', '), employmentText: relevant, title };
   return { decision: 'VERIFIED', reason: 'identity and employment evidence present', evidence: identitySignals.join(', '), employmentText: relevant, title };

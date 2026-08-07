@@ -5,7 +5,9 @@ import { isKnownAtsUrl, normalizeHttpUrl } from './discovery.js';
 const GENERIC_LINK_TEXT = /^(?:read more|learn more|more|view|view vacancy|hier(?: de| deze)?(?: hele| volledige)? vacature|bekijk(?: de| deze)? vacature|lees(?: hier)?(?: de| deze)?(?: hele| volledige)? vacature(?: en solliciteer)?|solliciteer(?: hier)?|apply(?: now)?|details?)[.!\s]*$/i;
 const DETAIL_PATH = /(?:\/vacature-[^/?#]+|\/(?:vacatures?|vacancies|vacancy|jobs?|careers?)\/[^/?#]{2,}|\/jobs?\/\d+)/i;
 const CTA_TEXT = /\b(?:vacature|vacancy|solliciteer|solliciteren|apply)\b/i;
+const DESCRIPTIVE_VACANCY_TITLE = /^(?:vacature|vacancy|job)\s*[:\-–—]?\s+\S/i;
 const APPLY_TEXT = /\b(?:apply|solliciteer|solliciteren|reageer|application|aanmelden)\b/i;
+const VACANCY_SUBMISSION_TEXT = /(?:\b(?:meld|plaats|submit|post|add|advertise)\b.{0,30}\b(?:vacature|vacancy|job)\b|\b(?:vacature|vacancy|job)\b.{0,30}\b(?:aanmelden|indienen|submit|post|plaatsen)\b)/i;
 function cleanText(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
 function stripHtml(value) { return cleanText(cheerio.load(String(value ?? '')).text()); }
 function findJobPostings(value, out = []) {
@@ -53,7 +55,7 @@ function nearestPrecedingHeading($, element) {
 function candidateTitleFromAnchor($, element) {
   const anchor = $(element); let title = cleanText(anchor.text());
   const container = anchor.closest('article, li, section, [class*="job"], [class*="vacan"], [class*="career"], [class*="position"], [class*="role"], [data-job]');
-  if (!title || GENERIC_LINK_TEXT.test(title) || CTA_TEXT.test(title)) {
+  if (!title || GENERIC_LINK_TEXT.test(title) || (CTA_TEXT.test(title) && !DESCRIPTIVE_VACANCY_TITLE.test(title))) {
     const preceding = nearestPrecedingHeading($, element);
     const containerHeading = cleanText(container.find('h1,h2,h3,h4,h5,h6').first().text());
     title = preceding || containerHeading || title;
@@ -67,8 +69,10 @@ function extractLinkedCandidates(html, pageUrl, source) {
     const url = normalizeHttpUrl(anchor.attr('href'), pageUrl);
     if (!url || url === pageUrl) return;
     const anchorText = cleanText(anchor.text());
+    if (VACANCY_SUBMISSION_TEXT.test(anchorText)) return;
     const detailLike = looksLikeDetailUrl(url, pageUrl, pattern);
     const strongCta = CTA_TEXT.test(anchorText);
+    const vacancyDocument = strongCta && /\.pdf(?:$|[?#])/i.test(url);
     if (!detailLike && !strongCta) return;
     const { title, container } = candidateTitleFromAnchor($, element);
     if (!title || isGenericNavigationTitle(title)) return;
@@ -76,7 +80,7 @@ function extractLinkedCandidates(html, pageUrl, source) {
       title,
       url,
       sourceUrl: pageUrl,
-      method: pattern?.test(new URL(url).pathname) ? 'JOB_URL_PATTERN' : (isKnownAtsUrl(url) ? 'ATS_LINK' : (detailLike ? 'DETAIL_LINK' : 'VACANCY_CTA_LINK')),
+      method: vacancyDocument ? 'VACANCY_DOCUMENT_LINK' : (pattern?.test(new URL(url).pathname) ? 'JOB_URL_PATTERN' : (isKnownAtsUrl(url) ? 'ATS_LINK' : (detailLike ? 'DETAIL_LINK' : 'VACANCY_CTA_LINK'))),
       identityProof: true,
       employmentText: cleanText(container.text()),
       structured: null,

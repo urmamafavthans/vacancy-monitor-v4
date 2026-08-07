@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { CheerioCrawler, PlaywrightCrawler, log } from 'crawlee';
 import { randomUUID } from 'node:crypto';
+import { PDFParse } from 'pdf-parse';
 
 log.setLevel(log.LEVELS.WARNING);
 
@@ -31,6 +32,41 @@ export function needsBrowserValidation(html) {
 
 function requestFor(url, mode) {
   return { url, uniqueKey: `${mode}:${url}:${randomUUID()}` };
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+export function pageFromPdfText(url, text) {
+  const clean = cleanText(text);
+  const firstLine = String(text ?? '').split(/\r?\n/).map(cleanText).find(Boolean) || '';
+  return {
+    requestedUrl: url,
+    finalUrl: url,
+    statusCode: 200,
+    contentType: 'application/pdf',
+    html: `<html><head><title>${escapeHtml(firstLine)}</title></head><body><main>${escapeHtml(clean)}</main></body></html>`,
+    text: clean,
+    method: 'PDF_TEXT',
+    error: null,
+  };
+}
+
+async function loadPdfPages(urls) {
+  const results = new Map();
+  await Promise.all(urls.map(async (url) => {
+    const parser = new PDFParse({ url });
+    try {
+      const parsed = await parser.getText();
+      results.set(url, pageFromPdfText(url, parsed.text));
+    } catch (error) {
+      results.set(url, { requestedUrl: url, finalUrl: url, statusCode: null, contentType: 'application/pdf', html: '', text: '', method: 'PDF_TEXT', error: error?.message || 'PDF request failed' });
+    } finally {
+      await parser.destroy().catch(() => {});
+    }
+  }));
+  return results;
 }
 
 async function loadWithCheerio(urls) {
@@ -100,9 +136,12 @@ async function loadWithBrowser(urls) {
 export async function loadPages(urls, { browserFallback = true } = {}) {
   const unique = [...new Set(urls.filter(Boolean))];
   if (!unique.length) return new Map();
-  const primary = await loadWithCheerio(unique);
+  const pdfUrls = unique.filter((url) => /\.pdf(?:$|[?#])/i.test(url));
+  const htmlUrls = unique.filter((url) => !pdfUrls.includes(url));
+  const [primary, pdfPages] = await Promise.all([loadWithCheerio(htmlUrls), loadPdfPages(pdfUrls)]);
+  for (const [url, page] of pdfPages) primary.set(url, page);
   if (!browserFallback) return primary;
-  const fallbackUrls = unique.filter((url) => {
+  const fallbackUrls = htmlUrls.filter((url) => {
     const page = primary.get(url);
     return !page || page.error || page.statusCode >= 400 || needsBrowserValidation(page.html);
   });

@@ -5,6 +5,7 @@ const GENERIC_BAD_SCHEMES = /^(?:mailto:|tel:|javascript:|data:)/i;
 const NON_HTML_ASSET = /\.(?:pdf|docx?|xlsx?|pptx?|zip|rar|7z|jpe?g|png|gif|webp|svg|mp[34]|mov|avi|wav)(?:$|[?#])/i;
 const SOURCE_PATH = /\/(?:vacatures?|vacancies|jobs?|careers?|werken[-_]?bij(?:[-_][^/?#]+)*|work[-_]?with[-_]?us|join[-_]?us)\/?$/i;
 const SOURCE_LABEL = /^(?:vacatures?|vacancies|vacancy|jobs?|careers?|werken bij(?: ons)?|work with us|join us|opportunities)$/i;
+const QUALIFIED_SOURCE_HEADING = /^(?:.{1,80}\s+)?(?:vacatures|vacancies|jobs|careers)$/i;
 function cleanText(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
 
 export function normalizeHttpUrl(href, baseUrl) {
@@ -65,7 +66,10 @@ export function scoreSourcePage(page) {
   if (SOURCE_TERMS.test(title) && !pageHasJobPosting(page.html)) score += 4;
   if (SOURCE_TERMS.test(h1) && !pageHasJobPosting(page.html)) score += 5;
   let sourceHeadings = 0;
-  $('h2,h3,h4,h5,h6').each((_, node) => { if (SOURCE_LABEL.test(cleanText($(node).text()))) sourceHeadings += 1; });
+  $('h2,h3,h4,h5,h6').each((_, node) => {
+    const heading = cleanText($(node).text());
+    if (SOURCE_LABEL.test(heading) || QUALIFIED_SOURCE_HEADING.test(heading)) sourceHeadings += 1;
+  });
   if (sourceHeadings) score += 7;
   if (pageHasJobPosting(page.html) && !isSourceLikePath(url) && !isKnownAtsUrl(url)) score -= 6;
   const vacancyLinks = extractAnchors(page.html, url).filter((link) => scoreVacancyLink(link, url) >= 6);

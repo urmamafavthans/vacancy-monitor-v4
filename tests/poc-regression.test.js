@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { scoreSourcePage } from '../src/discovery.js';
 import { extractCandidates } from '../src/extract.js';
-import { needsBrowserValidation } from '../src/loader.js';
+import { needsBrowserValidation, pageFromPdfText } from '../src/loader.js';
 import { normalizeVerifiedVacancy } from '../src/normalize.js';
 import { verifyJobPage } from '../src/verify.js';
 
@@ -98,4 +98,30 @@ test('detail-page fingerprint is stable across title corrections and query-strin
   const first = normalizeVerifiedVacancy({ ...base, title: 'Wrong title', url: 'https://example.org/vacature/123?language=nl' }, source, { title: 'Correct title', employmentText: '32 uur per week', evidence: '' }, '2026-08-07T15:00:00.000Z');
   const second = normalizeVerifiedVacancy({ ...base, title: 'Another title', url: 'https://example.org/vacature/123?utm_source=test' }, source, { title: 'Renamed role', employmentText: '32 uur per week', evidence: '' }, '2026-08-07T16:00:00.000Z');
   assert.equal(first.fingerprint, second.fingerprint);
+});
+
+test('institution-qualified vacancy headings identify a source page', () => {
+  const url = 'https://example.org/info/join/';
+  const html = '<html><head><title>Join</title></head><body><main><h1>Volunteers</h1><h2>Example Institution vacancies</h2><a href="/2026/08/07/vacature-programme-producer/">Vacature Programme Producer (0.6 FTE)</a></main></body></html>';
+  assert.ok(scoreSourcePage(page(url, html)) >= 6);
+});
+
+test('descriptive vacancy links keep their role titles and vacancy-submission links are ignored', () => {
+  const url = 'https://example.org/werkenbij/';
+  const html = '<html><body><main><h1>Werken bij</h1><h2>Vacatures</h2><a href="/samenwerken/meld-vacature-aan">Meld een vacature aan</a><a href="/werkenbij/lid-raad-van-toezicht">Vacature: Lid raad van toezicht</a></main></body></html>';
+  const candidates = extractCandidates(page(url, html), { jobUrlPattern: '\\/werkenbij\\/' });
+  assert.deepEqual(candidates.map((candidate) => candidate.title), ['Vacature: Lid raad van toezicht']);
+});
+
+test('vacancy PDF links retain their role title and use document verification', () => {
+  const sourceUrl = 'https://example.org/vacatures/';
+  const pdfUrl = 'https://cdn.example.org/VacatureSpoelkeukenmedewerker.pdf';
+  const sourceHtml = `<html><body><main><h1>Vacatures</h1><ul><li><a href="${pdfUrl}">Vacature Spoelkeukenmedewerker</a> (uren in overleg)</li></ul></main></body></html>`;
+  const [candidate] = extractCandidates(page(sourceUrl, sourceHtml), { jobUrlPattern: '' });
+  assert.equal(candidate.title, 'Vacature Spoelkeukenmedewerker');
+  assert.equal(candidate.method, 'VACANCY_DOCUMENT_LINK');
+  const documentPage = pageFromPdfText(pdfUrl, 'SPOELKEUKENMEDEWERKER\nWij zoeken iemand voor een aantal uur per week. Salariëring conform CAO Horeca. Stuur je sollicitatie naar sollicitatie@example.org.');
+  const result = verifyJobPage(candidate, documentPage);
+  assert.equal(result.decision, 'VERIFIED');
+  assert.equal(result.title, 'Spoelkeukenmedewerker');
 });
