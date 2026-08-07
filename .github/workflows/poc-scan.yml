@@ -10,9 +10,6 @@ on:
       - 'tests/**'
       - 'package.json'
       - '.github/workflows/poc-scan.yml'
-  schedule:
-    - cron: '17 * * * *'
-      timezone: 'Europe/Amsterdam'
 
 permissions:
   contents: read
