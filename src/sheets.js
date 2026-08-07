@@ -7,23 +7,15 @@ function requiredEnv(name) {
   return value;
 }
 
-function parseServiceAccountJson() {
-  const raw = requiredEnv('GOOGLE_SERVICE_ACCOUNT_JSON');
-  try {
-    return JSON.parse(raw);
-  } catch (error) {
-    throw new Error(`GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON: ${error.message}`);
-  }
-}
-
 export function spreadsheetId() {
   return requiredEnv('SPREADSHEET_ID');
 }
 
 export async function createSheetsClient() {
-  const credentials = parseServiceAccountJson();
+  // GitHub Actions authenticates to Google through Workload Identity Federation.
+  // google-auth-library then reads the short-lived Application Default Credentials
+  // created by google-github-actions/auth. No long-lived service-account JSON key is used.
   const auth = new google.auth.GoogleAuth({
-    credentials,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
   return google.sheets({ version: 'v4', auth });
