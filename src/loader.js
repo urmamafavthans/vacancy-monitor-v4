@@ -25,6 +25,10 @@ function pageLooksClientRendered(html) {
   return appShell && text.length < 700 && $('script').length >= 4;
 }
 
+export function needsBrowserValidation(html) {
+  return pageLooksClientRendered(html) || pageUsesClientFramework(html);
+}
+
 function requestFor(url, mode) {
   return { url, uniqueKey: `${mode}:${url}:${randomUUID()}` };
 }
@@ -100,7 +104,7 @@ export async function loadPages(urls, { browserFallback = true } = {}) {
   if (!browserFallback) return primary;
   const fallbackUrls = unique.filter((url) => {
     const page = primary.get(url);
-    return !page || page.error || page.statusCode >= 400 || pageLooksClientRendered(page.html) || pageUsesClientFramework(page.html);
+    return !page || page.error || page.statusCode >= 400 || needsBrowserValidation(page.html);
   });
   if (!fallbackUrls.length) return primary;
   const browser = await loadWithBrowser(fallbackUrls);
