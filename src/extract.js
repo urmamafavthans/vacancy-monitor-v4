@@ -2,8 +2,9 @@ import * as cheerio from 'cheerio';
 import { hasEmploymentEvidence, isGenericNavigationTitle, normalizeTitle } from './rules.js';
 import { isKnownAtsUrl, normalizeHttpUrl } from './discovery.js';
 
-const GENERIC_LINK_TEXT = /^(?:read more|learn more|more|view|view vacancy|hier(?: de| deze)?(?: hele| volledige)? vacature|bekijk(?: de| deze)? vacature|lees(?: hier)?(?: de| deze)?(?: hele| volledige)? vacature|solliciteer(?: hier)?|apply(?: now)?|details?)[.!\s]*$/i;
+const GENERIC_LINK_TEXT = /^(?:read more|learn more|more|view|view vacancy|hier(?: de| deze)?(?: hele| volledige)? vacature|bekijk(?: de| deze)? vacature|lees(?: hier)?(?: de| deze)?(?: hele| volledige)? vacature(?: en solliciteer)?|solliciteer(?: hier)?|apply(?: now)?|details?)[.!\s]*$/i;
 const DETAIL_PATH = /(?:\/vacature-[^/?#]+|\/(?:vacatures?|vacancies|vacancy|jobs?|careers?)\/[^/?#]{2,}|\/jobs?\/\d+)/i;
+const CTA_TEXT = /\b(?:vacature|vacancy|solliciteer|solliciteren|apply)\b/i;
 const APPLY_TEXT = /\b(?:apply|solliciteer|solliciteren|reageer|application|aanmelden)\b/i;
 function cleanText(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
 function stripHtml(value) { return cleanText(cheerio.load(String(value ?? '')).text()); }
@@ -36,9 +37,7 @@ function looksLikeDetailUrl(url, sourceUrl, explicitPattern) {
 }
 function nearestPrecedingHeading($, element) {
   let node = $(element);
-  for (let depth = 0; depth < 6 && node.length; depth += 1) {
-    const own = cleanText(node.find('h1,h2,h3,h4,h5,h6').first().text());
-    if (own) return own;
+  for (let depth = 0; depth < 7 && node.length; depth += 1) {
     const siblings = node.prevAll();
     for (let i = 0; i < siblings.length; i += 1) {
       const sibling = siblings.eq(i);
@@ -54,26 +53,40 @@ function nearestPrecedingHeading($, element) {
 function candidateTitleFromAnchor($, element) {
   const anchor = $(element); let title = cleanText(anchor.text());
   const container = anchor.closest('article, li, section, [class*="job"], [class*="vacan"], [class*="career"], [class*="position"], [class*="role"], [data-job]');
-  if (!title || GENERIC_LINK_TEXT.test(title)) {
+  if (!title || GENERIC_LINK_TEXT.test(title) || CTA_TEXT.test(title)) {
+    const preceding = nearestPrecedingHeading($, element);
     const containerHeading = cleanText(container.find('h1,h2,h3,h4,h5,h6').first().text());
-    title = containerHeading || nearestPrecedingHeading($, element);
+    title = preceding || containerHeading || title;
   }
   return { title: normalizeTitle(title), container };
 }
 function extractLinkedCandidates(html, pageUrl, source) {
   const $ = cheerio.load(html || ''); const pattern = compileOptionalPattern(source.jobUrlPattern); const candidates = [];
   $('a[href]').each((_, element) => {
-    const url = normalizeHttpUrl($(element).attr('href'), pageUrl);
-    if (!url || url === pageUrl || !looksLikeDetailUrl(url, pageUrl, pattern)) return;
+    const anchor = $(element);
+    const url = normalizeHttpUrl(anchor.attr('href'), pageUrl);
+    if (!url || url === pageUrl) return;
+    const anchorText = cleanText(anchor.text());
+    const detailLike = looksLikeDetailUrl(url, pageUrl, pattern);
+    const strongCta = CTA_TEXT.test(anchorText);
+    if (!detailLike && !strongCta) return;
     const { title, container } = candidateTitleFromAnchor($, element);
     if (!title || isGenericNavigationTitle(title)) return;
-    candidates.push({ title, url, sourceUrl: pageUrl, method: pattern?.test(new URL(url).pathname) ? 'JOB_URL_PATTERN' : (isKnownAtsUrl(url) ? 'ATS_LINK' : 'DETAIL_LINK'), identityProof: true, employmentText: cleanText(container.text()), structured: null });
+    candidates.push({
+      title,
+      url,
+      sourceUrl: pageUrl,
+      method: pattern?.test(new URL(url).pathname) ? 'JOB_URL_PATTERN' : (isKnownAtsUrl(url) ? 'ATS_LINK' : (detailLike ? 'DETAIL_LINK' : 'VACANCY_CTA_LINK')),
+      identityProof: true,
+      employmentText: cleanText(container.text()),
+      structured: null,
+    });
   });
   return candidates;
 }
 function extractInlineCandidates(html, pageUrl) {
   const $ = cheerio.load(html || ''); const candidates = [];
-  $('article, [data-job], [class*="job-card"], [class*="job_item"], [class*="job-item"], [class*="vacan"], section[id*="vacan"], section[class*="vacan"], section[id*="job"], section[class*="job"]').each((_, node) => {
+  $('article[data-job], [data-job], [class*="job-card"], [class*="job_item"], [class*="job-item"]').each((_, node) => {
     const section = $(node); const text = cleanText(section.text());
     if (text.length < 30 || text.length > 8000 || !hasEmploymentEvidence(text) || !APPLY_TEXT.test(text)) return;
     const title = normalizeTitle(cleanText(section.find('h1,h2,h3,h4,h5,h6').first().text()));
