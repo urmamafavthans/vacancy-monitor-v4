@@ -1,6 +1,16 @@
 import { createHash } from 'node:crypto';
 function cleanText(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
-function fingerprint(source, title, url) { return createHash('sha256').update(`${source.institution}\n${title.toLowerCase()}\n${url}`).digest('hex').slice(0, 32); }
+function canonicalUrl(value) {
+  try {
+    const url = new URL(value); url.hash = ''; url.search = '';
+    return url.toString().replace(/\/$/, '');
+  } catch { return cleanText(value).replace(/[?#].*$/, '').replace(/\/$/, ''); }
+}
+function fingerprint(source, title, url, sourceUrl) {
+  const detailUrl = canonicalUrl(url); const sourceCanonical = canonicalUrl(sourceUrl);
+  const identity = detailUrl && detailUrl !== sourceCanonical ? `${source.institution}\n${detailUrl}` : `${source.institution}\n${sourceCanonical}\n${cleanText(title).toLowerCase()}`;
+  return createHash('sha256').update(identity).digest('hex').slice(0, 32);
+}
 function firstMatch(text, regex) { const match = String(text ?? '').match(regex); return cleanText(match?.[0] || ''); }
 function dateValue(value) { if (!value) return ''; const match = String(value).match(/\d{4}-\d{2}-\d{2}/); return match?.[0] || cleanText(value).slice(0, 40); }
 function contractMode(text) {
@@ -36,8 +46,10 @@ function weeklyHours(text) {
 export function normalizeVerifiedVacancy(candidate, source, verification, nowIso) {
   const structured = candidate.structured || {};
   const title = cleanText(verification.title || candidate.title);
-  const evidenceText = cleanText(`${verification.employmentText || ''} ${candidate.employmentText || ''} ${structured.description || ''}`);
+  const primaryEvidence = verification.employmentText || candidate.employmentText || '';
+  const evidenceText = cleanText(`${primaryEvidence} ${structured.description || ''}`);
   const hours = weeklyHours(evidenceText);
-  const closing = dateValue(structured.validThrough) || closingDate(evidenceText, nowIso); const posted = dateValue(structured.datePosted); const fp = fingerprint(source, title, candidate.url);
-  return { fingerprint: fp, values: [nowIso, nowIso, source.institution, title, '', candidate.url, candidate.sourceUrl, source.city, posted, closing, hours, contractMode(evidenceText), '', source.travelTimeMinutes, 'VERIFIED', fp, `${candidate.method}; ${verification.evidence}`.slice(0, 1000)] };
+  const closing = dateValue(structured.validThrough) || closingDate(evidenceText, nowIso); const posted = dateValue(structured.datePosted);
+  const fp = fingerprint(source, title, candidate.url, candidate.sourceUrl);
+  return { fingerprint: fp, values: [nowIso, nowIso, source.institution, title, '', canonicalUrl(candidate.url), canonicalUrl(candidate.sourceUrl), source.city, posted, closing, hours, contractMode(evidenceText), '', source.travelTimeMinutes, 'VERIFIED', fp, `${candidate.method}; ${verification.evidence}`.slice(0, 1000)] };
 }
