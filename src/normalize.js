@@ -7,7 +7,7 @@ function contractMode(text) {
   const value = String(text ?? '');
   if (/\b(?:freelance|zzp)\b/i.test(value)) return 'Freelance/ZZP';
   if (/\b(?:onbepaalde tijd|permanent|vast contract)\b/i.test(value)) return 'Permanent';
-  if (/\b(?:bepaalde tijd|temporary|tijdelijk|jaarcontract|projectaanstelling|fixed[- ]term)\b/i.test(value)) return 'Fixed-term';
+  if (/\b(?:bepaalde tijd|temporary|tijdelijk|jaarcontract|projectaanstelling|fixed[- ]term|duur van (?:een|één|1) jaar)\b/i.test(value)) return 'Fixed-term';
   if (/\b(?:arbeidsovereenkomst|employment contract|dienstverband|aanstelling)\b/i.test(value)) return 'Employment';
   return '';
 }
@@ -27,10 +27,17 @@ function closingDate(text, nowIso) {
   const year = Number(named[3] || String(nowIso || '').slice(0,4) || new Date().getUTCFullYear());
   return month ? isoDate(year, month, Number(named[1])) : '';
 }
+function weeklyHours(text) {
+  const value = String(text ?? '');
+  const options = firstMatch(value, /\b\d{1,2}(?:\s*,\s*\d{1,2})+\s*(?:of|or)\s*\d{1,2}\s*(?:uur|hours?)(?:\s*(?:per\s+week|week))?\b/i);
+  if (options) return options;
+  return firstMatch(value, /\b\d+(?:[.,]\d+)?\s*(?:-|–|—|tot|to)?\s*\d*(?:[.,]\d+)?\s*(?:uur|hours?)(?:\s*(?:per\s+week|p\/?w|week))?\b/i);
+}
 export function normalizeVerifiedVacancy(candidate, source, verification, nowIso) {
   const structured = candidate.structured || {};
+  const title = cleanText(verification.title || candidate.title);
   const evidenceText = cleanText(`${verification.employmentText || ''} ${candidate.employmentText || ''} ${structured.description || ''}`);
-  const hours = firstMatch(evidenceText, /\b\d+(?:[.,]\d+)?\s*(?:-|–|—|tot|to)?\s*\d*(?:[.,]\d+)?\s*(?:uur|hours?)(?:\s*(?:per|p\/?w|week))?\b/i);
-  const closing = dateValue(structured.validThrough) || closingDate(evidenceText, nowIso); const posted = dateValue(structured.datePosted); const fp = fingerprint(source, candidate.title, candidate.url);
-  return { fingerprint: fp, values: [nowIso, nowIso, source.institution, candidate.title, '', candidate.url, candidate.sourceUrl, source.city, posted, closing, hours, contractMode(evidenceText), '', source.travelTimeMinutes, 'VERIFIED', fp, `${candidate.method}; ${verification.evidence}`.slice(0, 1000)] };
+  const hours = weeklyHours(evidenceText);
+  const closing = dateValue(structured.validThrough) || closingDate(evidenceText, nowIso); const posted = dateValue(structured.datePosted); const fp = fingerprint(source, title, candidate.url);
+  return { fingerprint: fp, values: [nowIso, nowIso, source.institution, title, '', candidate.url, candidate.sourceUrl, source.city, posted, closing, hours, contractMode(evidenceText), '', source.travelTimeMinutes, 'VERIFIED', fp, `${candidate.method}; ${verification.evidence}`.slice(0, 1000)] };
 }
