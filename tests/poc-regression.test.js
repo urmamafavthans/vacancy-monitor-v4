@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { scoreSourcePage } from '../src/discovery.js';
 import { extractCandidates } from '../src/extract.js';
+import { needsBrowserValidation } from '../src/loader.js';
 import { normalizeVerifiedVacancy } from '../src/normalize.js';
 import { verifyJobPage } from '../src/verify.js';
 
@@ -63,6 +64,23 @@ test('embedded style text inside a Nieuwe Instituut heading cannot contaminate t
   assert.equal(result.decision, 'VERIFIED');
   assert.equal(result.title, 'AV-coördinator');
   assert.equal(result.title.includes('.css-'), false);
+});
+
+test('duplicated Nieuwe Instituut vacancy heading collapses to one canonical title', () => {
+  const sourceUrl = 'https://nieuweinstituut.nl/projects/over-ons/vacatures';
+  const url = 'https://nieuweinstituut.nl/pages/vacature-dataspecialist';
+  const detailHtml = '<html><head><title>Vacature Dataspecialist</title></head><body><main><h1>Vacature DataspecialistVacature Dataspecialist</h1><p>Nieuwe Instituut zoekt een Dataspecialist (32-36 uur).</p><p>Salaris volgens Museum cao. Solliciteer doorlopend.</p></main></body></html>';
+  const result = verifyJobPage({ title: 'Dataspecialist', url, sourceUrl, method: 'JOB_URL_PATTERN', employmentText: '', identityProof: true }, page(url, detailHtml));
+  assert.equal(result.decision, 'VERIFIED');
+  assert.equal(result.title, 'Dataspecialist');
+});
+
+test('React or Next app roots require browser validation even when server HTML contains substantial text', () => {
+  const substantial = 'Nieuwe Instituut vacaturetekst '.repeat(80);
+  const html = `<html><body><div id="__next">${substantial}</div><script id="__NEXT_DATA__" type="application/json">{}</script></body></html>`;
+  assert.equal(needsBrowserValidation(html), true);
+  const staticHtml = `<html><body><main>${substantial}</main></body></html>`;
+  assert.equal(needsBrowserValidation(staticHtml), false);
 });
 
 test('normalization uses detail-page employment evidence instead of neighbouring source-card evidence', () => {
