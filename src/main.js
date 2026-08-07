@@ -8,6 +8,10 @@ import { appendDiagnostics, createSheetsClient, readUrlMaster, setConfigValue, u
 import { verifyJobPage } from './verify.js';
 function sameUrl(a, b) { try { const x = new URL(a); const y = new URL(b); x.hash = ''; y.hash = ''; return x.toString().replace(/\/$/, '') === y.toString().replace(/\/$/, ''); } catch { return a === b; } }
 function errorText(error) { return error?.stack || error?.message || String(error); }
+function explicitlyZeroVacancies(page) {
+  const text = String(page?.text || '').replace(/\s+/g, ' ').trim();
+  return /(?:there (?:are|is) (?:currently |at the moment )?no vacancies|at the moment,? there are no vacancies|currently no vacancies|no current vacancies|momenteel geen vacatures|op dit moment (?:zijn er )?geen vacatures|er zijn momenteel geen vacatures)/i.test(text);
+}
 
 async function main() {
   const client = await createSheetsClient(); const sources = await readUrlMaster(client); const enabled = sources.filter((source) => source.enabled); const pocOnly = String(process.env.POC_ONLY || '').toLowerCase() === 'true';
@@ -33,14 +37,21 @@ async function main() {
       console.log(`[${source.institution}] SOURCE ${resolvedUrl} via ${resolution.method}`);
       const candidates = extractCandidates(sourcePage, source); console.log(`[${source.institution}] candidates=${candidates.length}`);
       if (!candidates.length) {
-        diagnostics.push(diagnosticRow({ runTime, runId, institution: source.institution, entryUrl: source.entryUrl, resolvedSourceUrl: resolvedUrl, route: 'SOURCE', extractionMethod: sourcePage.method, decision: 'AMBIGUOUS', reason: 'Confirmed vacancy source contained no extractable job candidates', evidence: `source loader=${sourcePage.method}` }));
-        await updateSourceStatus(client, source, { lastChecked: runTime, status: 'POC checked — no candidates', activeVacancies: 0, notes: `${resolution.method}; source=${resolvedUrl}` }); continue;
+        const zeroState = explicitlyZeroVacancies(sourcePage);
+        diagnostics.push(diagnosticRow({
+          runTime, runId, institution: source.institution, entryUrl: source.entryUrl, resolvedSourceUrl: resolvedUrl,
+          route: 'SOURCE', extractionMethod: sourcePage.method,
+          decision: zeroState ? 'VERIFIED' : 'AMBIGUOUS',
+          reason: zeroState ? 'Confirmed vacancy source explicitly reports zero vacancies' : 'Confirmed vacancy source contained no extractable job candidates',
+          evidence: zeroState ? 'explicit zero-vacancy statement' : `source loader=${sourcePage.method}`,
+        }));
+        await updateSourceStatus(client, source, { lastChecked: runTime, status: zeroState ? 'POC checked — zero vacancies' : 'POC checked — no candidates', activeVacancies: 0, notes: `${resolution.method}; source=${resolvedUrl}` }); continue;
       }
       const detailUrls = [...new Set(candidates.filter((candidate) => !sameUrl(candidate.url, resolvedUrl)).map((candidate) => candidate.url))].slice(0, 25); const detailPages = await loadPages(detailUrls); let sourceVerified = 0;
       for (const candidate of candidates) {
-        const page = sameUrl(candidate.url, resolvedUrl) ? sourcePage : detailPages.get(candidate.url); const verification = verifyJobPage(candidate, page);
-        diagnostics.push(diagnosticRow({ runTime, runId, institution: source.institution, entryUrl: source.entryUrl, resolvedSourceUrl: resolvedUrl, candidateTitle: candidate.title, candidateUrl: candidate.url, route: 'JOB', extractionMethod: `${candidate.method}/${page?.method || 'NO_PAGE'}`, decision: verification.decision, reason: verification.reason, evidence: verification.evidence }));
-        console.log(`[${source.institution}] ${verification.decision}: ${candidate.title}`);
+        const page = sameUrl(candidate.url, resolvedUrl) ? sourcePage : detailPages.get(candidate.url); const verification = verifyJobPage(candidate, page); const displayTitle = verification.title || candidate.title;
+        diagnostics.push(diagnosticRow({ runTime, runId, institution: source.institution, entryUrl: source.entryUrl, resolvedSourceUrl: resolvedUrl, candidateTitle: displayTitle, candidateUrl: candidate.url, route: 'JOB', extractionMethod: `${candidate.method}/${page?.method || 'NO_PAGE'}`, decision: verification.decision, reason: verification.reason, evidence: verification.evidence }));
+        console.log(`[${source.institution}] ${verification.decision}: ${displayTitle}`);
         if (verification.decision === 'ERROR') technicalErrors += 1;
         if (verification.decision === 'VERIFIED') { sourceVerified += 1; verifiedRows.push(normalizeVerifiedVacancy(candidate, source, verification, runTime)); }
       }
