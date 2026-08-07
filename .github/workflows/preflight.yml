@@ -14,7 +14,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - id: auth
         name: Authenticate to Google Cloud with OIDC
@@ -25,7 +25,7 @@ jobs:
           service_account: vacancy-monitor@project-971fb5f9-f8e1-41d2-93e.iam.gserviceaccount.com
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
