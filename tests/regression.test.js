@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { scanRunContext, selectRunSources } from '../src/config.js';
 import { EXPANSION_STATES, expansionCounts, resultSignature, selectNextBatch, transitionExpansionSource } from '../src/expansion-state.js';
 import { hasEmploymentEvidence, isGenericNavigationTitle, verifyCandidate } from '../src/rules.js';
+import { explicitlyZeroVacancies } from '../src/zero-state.js';
 
 const FALSE_POSITIVE_TITLES = ['Visit','Who we are','What we do','The building','Support us','Organization','Opening hours','Partners','Programme','Team','Shop','Newsletter','Zie ook','Bezoeken','Steun ons','Wie we zijn','Wat we doen','Het gebouw','The Family of Migrants','Now showing','HKU as a workplace','Applying step by step','Vacatures','Vacancies','Jobs','Careers'];
 test('rejects known v3.4 navigation and content false positives', () => { for (const title of FALSE_POSITIVE_TITLES) assert.equal(isGenericNavigationTitle(title), true, title); });
@@ -11,6 +12,11 @@ test('requires both vacancy identity and employment evidence', () => { assert.de
 test('rejects internship, trainee, volunteer-only, unpaid and open applications', () => { for (const text of ['Internship 32 hours','Stage 4 dagen','Vrijwilligersfunctie','Unpaid role','Open sollicitatie']) assert.equal(verifyCandidate({ title: 'Candidate', identityProof: true, employmentText: text }).verified, false, text); assert.equal(verifyCandidate({ title: 'Vrijwilliger', identityProof: true, employmentText: '8 uur per week' }).verified, false); });
 test('allows paid volunteer-coordination roles when employment evidence exists', () => { assert.equal(verifyCandidate({ title: 'Vrijwilligerscoördinator', identityProof: true, employmentText: '24 uur per week, salaris volgens cao, solliciteer voor 12 augustus' }).verified, true); });
 test('allows unusual paid cultural-sector titles when the evidence gates pass', () => { for (const title of ['Archivaris','Digital Process Owner','Lid Raad van Toezicht','Interieurbouwer/Timmerman','AV-coördinator','Depotbeheerder']) assert.equal(verifyCandidate({ title, identityProof: true, employmentText: '24 uur per week, solliciteer voor 20 augustus' }).verified, true, title); });
+test('recognises explicit no-opening statements on confirmed vacancy pages', () => {
+  assert.equal(explicitlyZeroVacancies({ text: 'Currently, we have no job openings.' }), true);
+  assert.equal(explicitlyZeroVacancies({ text: 'Currently we have no open positions.' }), true);
+  assert.equal(explicitlyZeroVacancies({ text: 'Currently, we have two job openings.' }), false);
+});
 
 const POC_SOURCES = [
   { enabled: true, institution: 'Kunstinstituut Melly' },

@@ -7,13 +7,10 @@ import { loadPages } from './loader.js';
 import { normalizeVerifiedVacancy } from './normalize.js';
 import { appendDiagnostics, createSheetsClient, ensureExpansionColumns, readConfig, readUrlMaster, setConfigValue, setConfigValues, updateExpansionSources, updateResolvedSource, updateSourceStatus, upsertVerifiedVacancies } from './sheets.js';
 import { verifyJobPage } from './verify.js';
+import { explicitlyZeroVacancies } from './zero-state.js';
 
 function sameUrl(a, b) { try { const x = new URL(a); const y = new URL(b); x.hash = ''; y.hash = ''; return x.toString().replace(/\/$/, '') === y.toString().replace(/\/$/, ''); } catch { return a === b; } }
 function errorText(error) { return error?.stack || error?.message || String(error); }
-function explicitlyZeroVacancies(page) {
-  const text = String(page?.text || '').replace(/\s+/g, ' ').trim();
-  return /(?:there (?:are|is) (?:currently |at the moment )?no vacancies|at the moment,? there are no vacancies|currently no vacancies|no current vacancies|momenteel geen vacatures|op dit moment (?:zijn er )?geen vacatures|er zijn momenteel geen vacatures)/i.test(text);
-}
 
 function applyControlPatch(source, patch) {
   Object.assign(source, patch);
